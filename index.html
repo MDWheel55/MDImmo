@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MDImmo — Registre locatif</title>
+<title>MDImmo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -29,7 +29,7 @@ body{background:var(--fond);color:var(--text);font-family:var(--syne);min-height
 .nav{background:var(--encre);padding:0;position:sticky;top:0;z-index:100}
 .nav-bar{display:flex;align-items:center;gap:16px;padding:12px 20px;flex-wrap:wrap}
 .nav-logo{font-family:var(--cond);font-weight:700;font-size:17px;color:#EEF1EF;display:flex;align-items:center;gap:9px}
-.nav-logo span{opacity:.55;font-weight:500}
+.nav-logo em{font-style:normal;color:#8FBFAE}
 .nav-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .nav-tabs{display:flex;gap:2px;padding:0 12px;overflow-x:auto}
 .nav-tabs::-webkit-scrollbar{height:0}
@@ -160,7 +160,7 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
         <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>
         <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4M10 10h4M10 14h4M10 18h4"/>
       </svg>
-      Registre locatif <span>Drummondville</span>
+      MD<em>Immo</em>
     </div>
     <div class="nav-right">
       <select class="sel-an" id="sel-imm" onchange="changerImmeuble()"><option value="">Tous les immeubles</option></select>
@@ -389,7 +389,7 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
 <script>
 /* MDImmo — frontend. Mêmes conventions que MDCompta :
    gsApi({action}), _gsLire avec reprise, setStatus, fmt/cls/esc, chargé{}. */
-const SCRIPT_URL = 'COLLER_ICI_L_URL_DU_DEPLOIEMENT';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxCIJ4kpPDhUvvC2hv6BCo2UYHlIN_FK4Bmrolt925_8OfxayL8Czmil44E9YNS8X4Qvw/exec';
 let TOKEN = '';                       /* la clé viendra plus tard (CFG.AUTH = false) */
 
 let REF = { immeubles:[], logements:[], baux:[], postes:[], prets:[], reglages:{}, parts:{} };
