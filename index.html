@@ -158,6 +158,10 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
 
 /* Perception : versement partiel et note */
 .cell.partiel{background:var(--amber-bg);color:var(--amber);font-weight:500}
+/* Rien reçu, mais une note existe : une entente est consignée. À distinguer
+   d'une case blanche, où il ne s'est simplement rien passé. */
+.cell.convenu{background:#E7ECEA;color:var(--muted)}
+.cell.convenu::placeholder{color:var(--muted);opacity:1}
 .cellbox{position:relative}
 /* Pastille de note : encre, pour ne se confondre ni avec le vert du payé
    ni avec l'ocre du partiel. Le liseré blanc la détache de tous les fonds. */
@@ -275,7 +279,8 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
     <b>La couleur dit l'état du paiement</b> —
     <span class="lg-ex" style="background:var(--green-bg);color:var(--green)">770</span> loyer réglé au complet ·
     <span class="lg-ex" style="background:var(--amber-bg);color:var(--amber)">50</span> versement partiel ·
-    <span class="lg-ex" style="color:var(--dim)">·</span> rien reçu.<br>
+    <span class="lg-ex" style="background:#E7ECEA;color:var(--muted)">entente</span> rien reçu mais une note consignée ·
+    <span class="lg-ex" style="color:var(--dim)">·</span> rien du tout.<br>
 
     <b>Le contour dit le nombre de versements</b> —
     <span class="lg-ex" style="border:1px dotted var(--dim)">770</span> pointillé : plusieurs versements dans le mois.
@@ -719,11 +724,14 @@ async function chargerPerception(){
           var multi = nb>1;
           // La couleur suit l'état du paiement, même quand il y a plusieurs
           // versements : trois paiements qui bouclent le loyer, c'est vert.
-          var etat = (pt ? ' partiel' : (v ? ' paye' : '')) + (multi ? ' multi' : '');
+          // Quatre états, dans l'ordre de priorité : partiel, payé,
+          // convenu (aucun versement mais une note), puis vide.
+          var etat = (pt ? ' partiel' : (v ? ' paye' : (nt ? ' convenu' : ''))) + (multi ? ' multi' : '');
           var bulle = (multi ? nb+' versements'+(pt?', total incomplet':', loyer complet')+
                                ' — clique pour les gérer' : '') + (nt ? (multi?' · ':'')+nt : '');
           cells.push('<td class="cellbox">'+
             '<input class="cell'+etat+'" value="'+(v||'')+'"'+
+              (!v && nt ? ' placeholder="entente"' : '')+
               (multi ? ' readonly onclick="ouvrirNote(\''+l.logementId+'\','+m+')"'
                      : ' onchange="majPerception(\''+l.logementId+'\','+m+',this)"')+
               ' title="'+esc(bulle||'')+'" aria-label="'+esc(l.numero+' '+mois[d0+k]+(bulle?' — '+bulle:''))+'">'+
