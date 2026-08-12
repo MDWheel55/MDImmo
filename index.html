@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MDImmo — Registre locatif</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Charte du registre locatif : papier vert-gris, encre profonde,
+     vert comptable / brique / laiton. Volontairement distincte de MDCompta. */
+  --encre:#16211D;--fond:#EEF1EF;--s1:#FFFFFF;--s2:#F7F9F8;--s3:#F2F5F3;
+  --border:#D3DAD6;--text:#16211D;--muted:#69766F;--dim:#9BA8A2;
+  --green:#1E5B49;--green-bg:#E4EDE9;--green-bd:#BBD4CA;
+  --red:#A63A2E;--red-bg:#F7E7E4;--red-bd:#E3BFB8;
+  --amber:#8A6524;--amber-bg:#F3EBDB;--amber-bd:#DFCDA6;
+  --cond:'IBM Plex Sans Condensed',system-ui,sans-serif;
+  --syne:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--fond);color:var(--text);font-family:var(--syne);min-height:100vh;font-size:14px;-webkit-font-smoothing:antialiased}
+.hidden{display:none!important}
+:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+
+/* Bandeau + navigation, sur fond encre */
+.nav{background:var(--encre);padding:0;position:sticky;top:0;z-index:100}
+.nav-bar{display:flex;align-items:center;gap:16px;padding:12px 20px;flex-wrap:wrap}
+.nav-logo{font-family:var(--cond);font-weight:700;font-size:17px;color:#EEF1EF;display:flex;align-items:center;gap:9px}
+.nav-logo span{opacity:.55;font-weight:500}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.nav-tabs{display:flex;gap:2px;padding:0 12px;overflow-x:auto}
+.nav-tabs::-webkit-scrollbar{height:0}
+.nav-tab{font-family:var(--cond);font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:rgba(238,241,239,.6);background:none;border:none;border-bottom:2px solid transparent;
+  padding:9px 12px;cursor:pointer;white-space:nowrap;transition:color .15s}
+.nav-tab:hover{color:#EEF1EF}
+.nav-tab.active{color:#fff;border-bottom-color:#8FBFAE}
+.sel-an{font-family:var(--syne);font-size:13px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.2);
+  border-radius:5px;color:#EEF1EF;padding:6px 9px}
+.sel-an option{color:var(--text)}
+.sync{display:flex;align-items:center;gap:7px}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:rgba(238,241,239,.4)}
+.sync-dot.ok{background:#8FBFAE;box-shadow:0 0 7px rgba(143,191,174,.7)}
+.sync-dot.err{background:#D98A7D}
+.sync-status{font-family:var(--mono);font-size:9px;color:rgba(238,241,239,.6)}
+
+/* Boutons */
+.btn{font-family:var(--syne);font-size:13.5px;font-weight:500;padding:8px 14px;border-radius:6px;cursor:pointer;
+  border:1px solid var(--border);background:transparent;color:var(--text);transition:background .15s}
+.btn:hover{background:var(--s3)}
+.btn-p{background:var(--encre);color:#fff;border-color:var(--encre)}
+.btn-p:hover{background:#243530}
+.btn-g{background:var(--green);color:#fff;border-color:var(--green)}
+.btn-g:hover{background:#26705a}
+.btn-r{background:transparent;color:var(--red);border-color:var(--red-bd)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* Layout */
+.wrap{max-width:1240px;margin:0 auto;padding:22px 20px 60px}
+.sec{font-family:var(--cond);font-size:19px;font-weight:700;color:var(--text);margin:0 0 14px;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.sec-actions{display:flex;gap:8px}
+.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px;margin-bottom:18px}
+
+/* Tables */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--s1)}
+table{width:100%;border-collapse:collapse;font-size:13.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+thead th{background:var(--s2);color:var(--muted);text-align:left;padding:9px 11px;border-bottom:1px solid var(--border);
+  font-family:var(--cond);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+tbody td{padding:8px 11px;border-bottom:1px solid #EDF0EE}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#F9FBFA}
+.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.pos{color:var(--green)}.neg{color:var(--red)}
+.tag{font-family:var(--cond);font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  padding:2.5px 7px;border-radius:3px;background:var(--s3);color:var(--muted)}
+.tr-grp td{background:var(--s3);color:var(--muted);font-family:var(--cond);font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;font-size:11.5px}
+.tr-tot td{background:var(--s3);font-weight:600;border-top:2px solid var(--encre)}
+.bdg{font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 7px;border-radius:3px;white-space:nowrap;display:inline-block}
+.bdg-ok{background:var(--green-bg);color:var(--green)}
+.bdg-warn{background:var(--amber-bg);color:var(--amber)}
+.bdg-bad{background:var(--red-bg);color:var(--red)}
+.empty{padding:38px 20px;text-align:center;color:var(--muted);font-size:13px}
+.sub{color:var(--muted);font-size:11.5px;font-family:var(--syne)}
+
+/* Cellules de perception */
+.cell{width:100%;font-family:var(--mono);font-size:11.5px;text-align:center;border:1px solid transparent;
+  background:none;border-radius:3px;padding:4px 2px;color:var(--text);font-variant-numeric:tabular-nums}
+.cell:hover{border-color:var(--border)}
+.cell:focus{outline:none;border-color:var(--green);background:var(--s1)}
+.cell.paye{background:var(--green-bg);color:var(--green);font-weight:500}
+.mini{width:84px;font-family:var(--mono);font-size:12px;text-align:right;background:var(--s1);
+  border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--text)}
+.mini:focus{outline:none;border-color:var(--green)}
+.sticky1{position:sticky;left:0;background:var(--s1);border-right:1px solid var(--border);z-index:2;min-width:154px}
+thead .sticky1,.tr-grp .sticky1,.tr-tot .sticky1{background:var(--s3)}
+thead .sticky1{background:var(--s2)}
+tbody tr:hover .sticky1{background:#F9FBFA}
+
+/* Blocs chiffres */
+.blk{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:16px}
+.blk .t{color:var(--muted);font-family:var(--cond);font-size:11px;font-weight:600;letter-spacing:.13em;text-transform:uppercase}
+.blk .v{font-family:var(--mono);font-size:21px;font-weight:600;margin:5px 0 3px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.blk .s{color:var(--muted);font-size:12px}
+.blk.fort .v{color:var(--green)}
+
+/* Formulaires */
+.addcard{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px}
+.addgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;align-items:end}
+.fld{display:flex;flex-direction:column}
+.lbl{font-family:var(--cond);font-size:11px;font-weight:600;letter-spacing:.07em;color:var(--muted);text-transform:uppercase;margin-bottom:4px}
+.inp{width:100%;font-family:var(--syne);font-size:14px;background:var(--s1);border:1px solid var(--border);
+  border-radius:5px;color:var(--text);padding:8px 10px}
+.inp:focus{outline:none;border-color:var(--green)}
+textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:12.5px;white-space:pre}
+
+/* Notes */
+.note{background:var(--amber-bg);border-left:3px solid var(--amber);border-radius:0 6px 6px 0;
+  padding:11px 13px;font-size:12.5px;color:#5C4718;line-height:1.55;margin-top:16px}
+.note.rouge{background:var(--red-bg);border-left-color:var(--red);color:#6E2A21}
+.note b{color:inherit;font-weight:600}
+.note code{font-family:var(--mono);font-size:11.5px}
+
+/* Avis d'augmentation — mise en page du formulaire du TAL */
+.avis{background:#fff;border:1px solid var(--encre);padding:26px;margin-bottom:16px;font-size:12.5px;line-height:1.55}
+.avis h3{text-align:center;font-family:var(--syne);font-size:15px;font-weight:600;margin-bottom:3px}
+.avis .loi{text-align:center;font-size:10px;color:var(--muted);margin-bottom:18px}
+.avis .sect{background:#4A4A4A;color:#fff;font-weight:600;font-size:11.5px;padding:3px 8px;margin:16px 0 10px}
+.avis .rl{border-bottom:1px solid #999;display:inline-block;min-width:110px;padding:0 5px 1px;font-family:var(--mono)}
+.avis .cadre{border:1px solid var(--encre);padding:9px 11px;font-size:11px;margin-top:16px}
+.avis .sig{display:flex;gap:26px;margin-top:20px}
+.avis .sig>div{flex:1}
+.avis .sig .lg{border-bottom:1px solid #999;min-height:20px;font-size:12px}
+.avis .sig .lb{font-size:9.5px;color:var(--muted);margin-top:3px}
+.avis .pied{font-size:9.5px;color:var(--red);margin-top:16px;line-height:1.4}
+.blanc{border-bottom:1px solid #ccc;height:17px}
+
+@media print{
+  .noprint{display:none!important}
+  body{background:#fff}
+  .wrap{max-width:none;padding:0}
+  .avis{border:none;padding:0 0 40px;page-break-after:always}
+  .tbl-wrap{border:none;overflow:visible}
+  table{white-space:normal}
+}
+@media (max-width:640px){.wrap{padding:16px 12px 60px}.sec{font-size:17px}}
+</style>
+</head>
+<body>
+
+<nav class="nav noprint">
+  <div class="nav-bar">
+    <div class="nav-logo">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>
+        <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4M10 10h4M10 14h4M10 18h4"/>
+      </svg>
+      Registre locatif <span>Drummondville</span>
+    </div>
+    <div class="nav-right">
+      <select class="sel-an" id="sel-imm" onchange="changerImmeuble()"><option value="">Tous les immeubles</option></select>
+      <select class="sel-an" id="sel-an" onchange="changerAnnee()"></select>
+      <div class="sync"><div class="sync-dot" id="dot"></div><span class="sync-status" id="status">…</span></div>
+    </div>
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-tab="dash"   onclick="showTab('dash')">Tableau de bord</button>
+    <button class="nav-tab"        data-tab="perc"   onclick="showTab('perc')">Perception</button>
+    <button class="nav-tab"        data-tab="dep"    onclick="showTab('dep')">Dépenses</button>
+    <button class="nav-tab"        data-tab="somm"   onclick="showTab('somm')">Sommaire</button>
+    <button class="nav-tab"        data-tab="imm"    onclick="showTab('imm')">Immeubles</button>
+    <button class="nav-tab"        data-tab="baux"   onclick="showTab('baux')">Baux</button>
+    <button class="nav-tab"        data-tab="avis"   onclick="showTab('avis')">Avis de loyer</button>
+    <button class="nav-tab"        data-tab="rap"    onclick="showTab('rap')">Rapports</button>
+    <button class="nav-tab"        data-tab="import" onclick="showTab('import')">Importer</button>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<!-- ====== TABLEAU DE BORD ====== -->
+<section id="tab-dash">
+  <div class="sec"><span>Tableau de bord — exercice <span class="an-txt"></span></span></div>
+  <div class="grid4" id="db-blocs"></div>
+  <div class="sec"><span>Rendement par immeuble</span></div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Immeuble</th><th class="num">Loyers perçus</th><th class="num">Dépenses</th><th class="num">Net</th></tr></thead>
+      <tbody id="db-body"><tr><td colspan="4" class="empty">Chargement…</td></tr></tbody>
+    </table>
+  </div>
+  <div id="db-note"></div>
+</section>
+
+<!-- ====== PERCEPTION ====== -->
+<section id="tab-perc" class="hidden">
+  <div class="sec">
+    <span>Perception — exercice <span class="an-txt"></span> · <span id="perc-echus"></span></span>
+    <div class="sec-actions"><button class="btn" onclick="chargerPerception()">Rafraîchir</button></div>
+  </div>
+  <div class="grid4" id="perc-blocs"></div>
+  <div class="tbl-wrap"><table id="perc-tbl">
+    <thead id="perc-head"></thead>
+    <tbody id="perc-body"><tr><td class="empty">Chargement…</td></tr></tbody>
+  </table></div>
+  <div class="note">
+    Le solde reprend la formule du chiffrier : <b>loyer × mois échus − encaissements</b>.
+    Un montant entre parenthèses est dû par le locataire, un montant en vert est un surplus.
+    Les mois échus se recalculent selon la date du jour, donc les soldes évoluent seuls.
+  </div>
+</section>
+
+<!-- ====== DÉPENSES ====== -->
+<section id="tab-dep" class="hidden">
+  <div class="sec">
+    <span>Dépenses propres à un immeuble — <span class="an-txt"></span></span>
+    <div class="sec-actions"><button class="btn btn-p" onclick="basculerFormDep()">+ Saisir</button></div>
+  </div>
+
+  <div class="addcard hidden" id="dep-form">
+    <div class="addgrid">
+      <div class="fld"><label class="lbl">Date</label><input class="inp" id="d-date" type="date"></div>
+      <div class="fld"><label class="lbl">Immeuble</label><select class="inp" id="d-imm"></select></div>
+      <div class="fld"><label class="lbl">Poste</label><select class="inp" id="d-poste"></select></div>
+      <div class="fld"><label class="lbl">Nature</label><select class="inp" id="d-nature">
+        <option value="courante">Courante</option><option value="capital">Capital</option></select></div>
+      <div class="fld"><label class="lbl">Montant</label><input class="inp" id="d-montant" placeholder="0,00"></div>
+      <div class="fld"><label class="lbl">Description</label><input class="inp" id="d-desc"></div>
+      <div class="fld"><label class="lbl">Fournisseur</label><input class="inp" id="d-four"></div>
+      <div class="fld"><button class="btn btn-g" onclick="ajouterDepense()">Enregistrer</button></div>
+    </div>
+    <div id="d-hint" class="note hidden"></div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Date</th><th>Poste</th><th>Immeuble</th><th>Description</th><th>Nature</th><th class="num">Montant</th><th></th></tr></thead>
+      <tbody id="dep-body"><tr><td colspan="7" class="empty">Chargement…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="sec" style="margin-top:24px">
+    <span>Dépenses communes à répartir</span>
+    <div class="sec-actions"><button class="btn btn-p" onclick="basculerFormCom()">+ Saisir</button></div>
+  </div>
+
+  <div class="addcard hidden" id="com-form">
+    <div class="addgrid">
+      <div class="fld"><label class="lbl">Date</label><input class="inp" id="c-date" type="date"></div>
+      <div class="fld"><label class="lbl">Poste</label><select class="inp" id="c-poste"></select></div>
+      <div class="fld"><label class="lbl">Montant total</label><input class="inp" id="c-montant" placeholder="0,00"></div>
+      <div class="fld"><label class="lbl">Part locative</label><input class="inp" id="c-part" value="1" placeholder="1 = 100 %"></div>
+      <div class="fld"><label class="lbl">Clé</label><select class="inp" id="c-cle">
+        <option value="logements">Prorata des logements</option><option value="egales">Parts égales</option></select></div>
+      <div class="fld"><label class="lbl">Description</label><input class="inp" id="c-desc"></div>
+      <div class="fld"><button class="btn btn-g" onclick="ajouterCommune()">Enregistrer</button></div>
+    </div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead id="com-head"></thead>
+      <tbody id="com-body"><tr><td colspan="6" class="empty">Chargement…</td></tr></tbody>
+    </table>
+  </div>
+  <div class="note">
+    La <b>part locative</b> est la fraction déductible : <code>1</code> = tout, <code>0.6</code> = 60 %.
+    Elle s'applique avant la répartition. Voiture, cellulaire, assurance vie et prêt MAPA maison
+    ne sont déductibles qu'à hauteur de leur usage locatif réel.
+  </div>
+</section>
+
+<!-- ====== SOMMAIRE PAR POSTE ====== -->
+<section id="tab-somm" class="hidden">
+  <div class="sec">
+    <span>Sommaire par poste — <span class="an-txt"></span></span>
+    <div class="sec-actions"><button class="btn" onclick="exporterSommaire()">Exporter CSV</button></div>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead id="somm-head"></thead>
+    <tbody id="somm-body"><tr><td class="empty">Chargement…</td></tr></tbody>
+  </table></div>
+  <div class="note">
+    C'est la vue à comparer avec la feuille Dépenses du chiffrier, poste par poste et colonne
+    par colonne. Les montants incluent la part ventilée des dépenses communes.
+  </div>
+</section>
+
+<!-- ====== IMMEUBLES ====== -->
+<section id="tab-imm" class="hidden">
+  <div class="sec"><span>Immeubles et loyers — <span class="an-txt"></span></span></div>
+  <div id="imm-cartes"><div class="empty">Chargement…</div></div>
+  <div class="note">
+    Le prix d'achat et la répartition terrain / bâtiment sont vides. Sans eux, l'amortissement
+    (catégorie 1, 4 % sur le bâtiment seulement) ne peut pas être calculé. L'évaluation
+    municipale sert habituellement de répartiteur. Ces champs se remplissent directement
+    dans la feuille <b>Immeubles</b> du classeur.
+  </div>
+</section>
+
+<!-- ====== BAUX ====== -->
+<section id="tab-baux" class="hidden">
+  <div class="sec"><span>Baux</span></div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Locataire</th><th>Logement</th><th class="num">Loyer janv–juin</th><th class="num">Loyer juil–déc</th><th>Période</th><th>Notes</th></tr></thead>
+    <tbody id="baux-body"><tr><td colspan="6" class="empty">Chargement…</td></tr></tbody>
+  </table></div>
+  <div class="note">
+    Au Québec, aucun dépôt de garantie ne peut être exigé — c'est pourquoi ce champ n'existe pas.
+    Les téléphones et courriels se saisissent dans la feuille <b>Baux</b> du classeur.
+  </div>
+</section>
+
+<!-- ====== AVIS ====== -->
+<section id="tab-avis" class="hidden">
+  <div class="noprint">
+    <div class="sec">
+      <span>Avis d'augmentation de loyer — articles 1942 et 1943 C.c.Q.</span>
+      <div class="sec-actions">
+        <button class="btn" onclick="toutSelectionner(true)">Tout cocher</button>
+        <button class="btn" onclick="toutSelectionner(false)">Tout décocher</button>
+        <button class="btn btn-p" onclick="window.print()">Imprimer</button>
+      </div>
+    </div>
+    <div id="avis-delai"></div>
+    <div class="tbl-wrap" style="margin-top:12px">
+      <table>
+        <thead><tr><th></th><th>Logement</th><th>Locataire</th><th class="num">Loyer actuel</th><th class="num">Nouveau loyer</th><th class="num">Hausse</th></tr></thead>
+        <tbody id="avis-body"><tr><td colspan="6" class="empty">Chargement…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="note">
+      Le nouveau loyer se saisit dans l'onglet <b>Immeubles</b>, après avoir basculé l'année en
+      haut à droite. Note aussi que le modèle Excel d'origine renvoie encore à la « Régie du
+      logement » et au site rdl.gouv.qc.ca : l'organisme est le <b>Tribunal administratif du
+      logement</b> depuis 2020, site tal.gouv.qc.ca.
+    </div>
+  </div>
+  <div id="avis-imprimes"></div>
+</section>
+
+<!-- ====== RAPPORT ====== -->
+<section id="tab-rap" class="hidden">
+  <div class="sec noprint">
+    <span>État des revenus et dépenses de location — <span class="an-txt"></span></span>
+    <div class="sec-actions"><button class="btn btn-p" onclick="window.print()">Imprimer / PDF</button></div>
+  </div>
+  <h1 style="font-size:1.2rem;margin-bottom:4px" id="rap-titre"></h1>
+  <div class="sub" style="margin-bottom:14px" id="rap-soustitre"></div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th style="width:80px">Ligne T776</th><th>Poste</th><th class="num">Montant</th></tr></thead>
+    <tbody id="rap-body"><tr><td colspan="3" class="empty">Chargement…</td></tr></tbody>
+  </table></div>
+  <div class="note noprint">
+    Sommaire calculé sur une <b>base de caisse</b> : les loyers réellement encaissés, non les
+    loyers facturés. Les lignes renvoient au T776 fédéral ; le TP-128 québécois reprend les mêmes
+    postes. À faire valider par un comptable, en particulier la répartition personnel / locatif,
+    la déductibilité des intérêts sur les prêts non rattachés à un immeuble, et le partage
+    entretien / capital des factures de rénovation.
+  </div>
+</section>
+
+<!-- ====== IMPORT ====== -->
+<section id="tab-import" class="hidden">
+  <div class="sec"><span>Importer un journal préparé</span></div>
+  <div class="addcard">
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+      Une ligne par écriture, séparée par des points-virgules :<br>
+      <code style="font-family:var(--mono);font-size:11px;color:var(--text)">date;immeuble;poste;nature;description;fournisseur;montant</code><br>
+      Immeuble vide ou « commun » pour une dépense à répartir. Nature : <code>courante</code> ou <code>capital</code>.
+    </p>
+    <textarea class="inp" id="imp-txt" rows="8"
+      placeholder="2026-09-03;Corsetière;Déneigement;courante;Contrat saison;Excavation Roy;1818,04"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn btn-p" onclick="importerJournal()">Analyser et importer</button>
+      <button class="btn" onclick="document.getElementById('imp-txt').value=''">Vider</button>
+    </div>
+  </div>
+  <div id="imp-res"></div>
+</section>
+
+</div>
+
+<script>
+/* MDImmo — frontend. Mêmes conventions que MDCompta :
+   gsApi({action}), _gsLire avec reprise, setStatus, fmt/cls/esc, chargé{}. */
+const SCRIPT_URL = 'COLLER_ICI_L_URL_DU_DEPLOIEMENT';
+let TOKEN = '';                       /* la clé viendra plus tard (CFG.AUTH = false) */
+
+let REF = { immeubles:[], logements:[], baux:[], postes:[], prets:[], reglages:{}, parts:{} };
+let ANNEE = 2025, IMM = '';
+let PERC = null, SOMM = null, AVIS = null;
+const chargé = {};
+
+/* Lit la réponse GAS en tolérant les ratés transitoires de Google : le service
+   renvoie parfois une page HTML au lieu du JSON. Trois essais espacés. */
+async function _gsLire(faireRequete){
+  let derniere='';
+  for(let essai=1;essai<=3;essai++){
+    const res=await faireRequete();
+    const texte=await res.text();
+    try{ return JSON.parse(texte); }
+    catch(e){
+      derniere=texte.slice(0,60);
+      if(essai<3) await new Promise(function(r){ setTimeout(r, 600*essai); });
+    }
+  }
+  throw new Error('Réponse non-JSON de Google Apps Script (souvent transitoire — réessaie ; si ça persiste, vérifie que le déploiement est accessible à « Tout le monde »). Début : '+derniere);
+}
+
+async function gsApi(params){
+  try{
+    setStatus(null,'Synchro…');
+    const url=SCRIPT_URL+'?'+new URLSearchParams(Object.assign({token:TOKEN,_:Date.now()},params)).toString();
+    const data=await _gsLire(function(){ return fetch(url,{cache:'no-store'}); });
+    if(!data.ok) throw new Error(data.error||'Erreur');
+    setStatus(true, data.avertissement ? '⚠ accès ouvert' : '✓ Synchronisé');
+    return data.data;
+  }catch(e){ setStatus(false,'⚠ '+e.message); throw e; }
+}
+
+/* Charges volumineuses (import de journal) : POST en texte brut, comme MDCompta. */
+async function gsApiPost(params){
+  try{
+    setStatus(null,'Synchro…');
+    const corps=Object.assign({token:TOKEN},params);
+    const data=await _gsLire(function(){
+      return fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body:JSON.stringify(corps)});
+    });
+    if(!data.ok) throw new Error(data.error||'Erreur');
+    setStatus(true,'✓ Synchronisé'); return data.data;
+  }catch(e){ setStatus(false,'⚠ '+e.message); throw e; }
+}
+
+function setStatus(ok,msg){
+  const d=document.getElementById('dot'); if(d) d.className='sync-dot'+(ok===true?' ok':ok===false?' err':'');
+  const s=document.getElementById('status'); if(s) s.textContent=msg;
+}
+function fmt(n){ if(n===''||n==null||isNaN(n)) return ''; return Number(n).toLocaleString('fr-CA',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmt0(n){ if(n===''||n==null||isNaN(n)) return ''; return Number(n).toLocaleString('fr-CA',{maximumFractionDigits:0}); }
+function cls(n){ return Number(n)<0?'neg':Number(n)>0?'pos':''; }
+function esc(s){ return (s==null?'':String(s)).replace(/[<>&"]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}); }
+function dfr(iso){ if(!iso) return ''; var p=String(iso).slice(0,10).split('-'); return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:iso; }
+function nomImm(id){ var i=REF.immeubles.filter(function(x){return x.id===id;})[0]; return i?i.nom:'Commun'; }
+function nomPoste(id){ var p=REF.postes.filter(function(x){return x.id===id;})[0]; return p?p.nom:id; }
+
+/* === DÉMARRAGE === */
+async function initApp(){
+  REF = await gsApi({action:'getReferentiels'});
+  const sa=document.getElementById('sel-an'); sa.innerHTML='';
+  [2025,2026,2027].forEach(function(a){
+    var o=document.createElement('option'); o.value=a; o.textContent=a;
+    if(a===ANNEE) o.selected=true; sa.appendChild(o);
+  });
+  const si=document.getElementById('sel-imm');
+  REF.immeubles.forEach(function(i){ var o=document.createElement('option'); o.value=i.id; o.textContent=i.nom; si.appendChild(o); });
+  remplirSelects();
+  majAnneeTexte();
+  showTab('dash');
+}
+function remplirSelects(){
+  ['d-imm'].forEach(function(id){
+    var s=document.getElementById(id); s.innerHTML='';
+    REF.immeubles.forEach(function(i){ var o=document.createElement('option'); o.value=i.id; o.textContent=i.nom; s.appendChild(o); });
+  });
+  ['d-poste','c-poste'].forEach(function(id){
+    var s=document.getElementById(id); s.innerHTML='';
+    var grp={};
+    REF.postes.forEach(function(p){ (grp[p.groupe]=grp[p.groupe]||[]).push(p); });
+    Object.keys(grp).forEach(function(g){
+      var og=document.createElement('optgroup'); og.label=g;
+      grp[g].forEach(function(p){
+        var o=document.createElement('option'); o.value=p.id;
+        o.textContent=p.nom+(p.ligneT776?' — T776 '+p.ligneT776:(p.deductible==='non'?' — non déductible':''));
+        og.appendChild(o);
+      });
+      s.appendChild(og);
+    });
+  });
+  document.getElementById('d-poste').addEventListener('change',majHintPoste);
+  majHintPoste();
+}
+function majHintPoste(){
+  var id=document.getElementById('d-poste').value;
+  var p=REF.postes.filter(function(x){return x.id===id;})[0];
+  var h=document.getElementById('d-hint');
+  if(p&&p.note){ h.innerHTML=esc(p.note); h.classList.remove('hidden'); }
+  else h.classList.add('hidden');
+}
+function majAnneeTexte(){
+  document.querySelectorAll('.an-txt').forEach(function(e){ e.textContent=ANNEE; });
+}
+function changerAnnee(){
+  ANNEE=Number(document.getElementById('sel-an').value);
+  majAnneeTexte();
+  Object.keys(chargé).forEach(function(k){ delete chargé[k]; });
+  showTab(document.querySelector('.nav-tab.active').dataset.tab);
+}
+function changerImmeuble(){
+  IMM=document.getElementById('sel-imm').value;
+  Object.keys(chargé).forEach(function(k){ delete chargé[k]; });
+  showTab(document.querySelector('.nav-tab.active').dataset.tab);
+}
+
+function showTab(tab){
+  document.querySelectorAll('.nav-tab').forEach(function(b){ b.classList.toggle('active', b.dataset.tab===tab); });
+  document.querySelectorAll('section[id^="tab-"]').forEach(function(s){ s.classList.add('hidden'); });
+  document.getElementById('tab-'+tab).classList.remove('hidden');
+  if(tab==='dash'  && !chargé.db) { chargerDash();       chargé.db=1; }
+  if(tab==='perc'  && !chargé.pc) { chargerPerception(); chargé.pc=1; }
+  if(tab==='dep'   && !chargé.dp) { chargerDepenses();   chargé.dp=1; }
+  if(tab==='somm'  && !chargé.sm) { chargerSommaire();   chargé.sm=1; }
+  if(tab==='imm'   && !chargé.im) { chargerImmeubles();  chargé.im=1; }
+  if(tab==='baux'  && !chargé.bx) { chargerBaux();       chargé.bx=1; }
+  if(tab==='avis'  && !chargé.av) { chargerAvis();       chargé.av=1; }
+  if(tab==='rap'   && !chargé.rp) { chargerRapport();    chargé.rp=1; }
+}
+
+/* === TABLEAU DE BORD === */
+function blk(t,v,s,fort){
+  return '<div class="blk'+(fort?' fort':'')+'"><div class="t">'+esc(t)+'</div>'+
+         '<div class="v">'+v+'</div><div class="s">'+esc(s)+'</div></div>';
+}
+async function chargerDash(){
+  try{
+    var d=await gsApi({action:'tableauBord',annee:ANNEE});
+    document.getElementById('db-blocs').innerHTML=
+      blk('Loyers encaissés',fmt(d.revenus)+' $','Base de caisse')+
+      blk('Dépenses courantes',fmt(d.depenses)+' $','Déductibles dans l\'année')+
+      blk('Net avant amortissement',fmt(d.net)+' $','Revenus moins dépenses',true)+
+      blk('Loyers dus',fmt(d.montantDu)+' $','Cumul à ce jour')+
+      blk('Additions au capital',fmt(d.capital)+' $','À amortir (DPA)');
+
+    var tb=document.getElementById('db-body'); tb.innerHTML='';
+    var lignes=d.parImmeuble.filter(function(i){ return !IMM || i.id===IMM; });
+    var faibles=[];
+    lignes.forEach(function(i){
+      if(i.revenus>0 && i.net/i.revenus<0.05) faibles.push(i.nom);
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td>'+esc(i.nom)+'</td><td class="num pos">'+fmt(i.revenus)+'</td>'+
+        '<td class="num neg">'+fmt(i.depenses)+'</td>'+
+        '<td class="num '+cls(i.net)+'" style="font-weight:700">'+fmt(i.net)+'</td>';
+      tb.appendChild(tr);
+    });
+    var tr=document.createElement('tr'); tr.className='tr-tot';
+    tr.innerHTML='<td>Total</td><td class="num">'+fmt(lignes.reduce(function(a,b){return a+b.revenus;},0))+'</td>'+
+      '<td class="num">'+fmt(lignes.reduce(function(a,b){return a+b.depenses;},0))+'</td>'+
+      '<td class="num">'+fmt(lignes.reduce(function(a,b){return a+b.net;},0))+'</td>';
+    tb.appendChild(tr);
+
+    document.getElementById('db-note').innerHTML = faibles.length
+      ? '<div class="note rouge"><b>Rendement quasi nul :</b> '+esc(faibles.join(', '))+
+        '. Un immeuble dont le net descend sous 5 % des revenus mérite un coup d\'œil au poste '+
+        'intérêt hypothécaire et au terme du prêt correspondant.</div>'
+      : '';
+  }catch(e){ document.getElementById('db-body').innerHTML='<tr><td colspan="4" class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+}
+
+/* === PERCEPTION === */
+async function chargerPerception(){
+  var tb=document.getElementById('perc-body');
+  try{
+    PERC=await gsApi({action:'getPerception',annee:ANNEE});
+    document.getElementById('perc-echus').textContent=PERC.moisEchus+' mois échus';
+
+    var lignes=PERC.lignes.filter(function(l){ return !IMM || l.immeubleId===IMM; });
+    var recu=lignes.reduce(function(a,l){return a+l.recu;},0);
+    var du=lignes.reduce(function(a,l){return a+l.montantDu;},0);
+    document.getElementById('perc-blocs').innerHTML=
+      blk('Encaissé',fmt(recu)+' $',lignes.length+' logements')+
+      blk('Montant dû',fmt(Math.max(0,du))+' $','Les deux semestres',true);
+
+    var mois=['Janv','Févr','Mars','Avr','Mai','Juin','Juil','Août','Sept','Oct','Nov','Déc'];
+    document.getElementById('perc-head').innerHTML=
+      '<tr><th class="sticky1">Logement</th>'+
+      [0,1,2,3,4,5].map(function(){return '<th class="num">Mois</th>';}).join('')+
+      '<th class="num">Solde</th></tr>';
+
+    tb.innerHTML='';
+    [1,2].forEach(function(sem){
+      var d0=(sem===1)?0:6;
+      var trg=document.createElement('tr'); trg.className='tr-grp';
+      trg.innerHTML='<td class="sticky1">'+(sem===1?'Janvier → juin':'Juillet → décembre')+'</td>'+
+        mois.slice(d0,d0+6).map(function(m){return '<td class="num">'+m+'</td>';}).join('')+'<td class="num">Solde</td>';
+      tb.appendChild(trg);
+
+      lignes.forEach(function(l){
+        var loyer=(sem===1)?l.loyerS1:l.loyerS2;
+        var solde=(sem===1)?l.soldeS1:l.soldeS2;
+        var tr=document.createElement('tr');
+        var cells=[];
+        for(var k=0;k<6;k++){
+          var m=d0+k+1, v=l.mois[d0+k];
+          cells.push('<td><input class="cell'+(v?' paye':'')+'" value="'+(v||'')+'" '+
+            'onchange="majPerception(\''+l.logementId+'\','+m+',this)" '+
+            'aria-label="'+esc(l.numero+' '+mois[d0+k])+'"></td>');
+        }
+        tr.innerHTML='<td class="sticky1"><b>'+esc(l.numero)+'</b> <span class="sub">'+fmt0(loyer)+' $</span>'+
+          '<div class="sub">'+esc(l.immeuble)+' · '+esc(l.locataire||'—')+'</div></td>'+
+          cells.join('')+
+          '<td class="num"><span class="bdg '+(solde>0.5?'bdg-bad':'bdg-ok')+'">'+
+          (solde>0.5?'('+fmt0(solde)+' $)':fmt0(-solde)+' $')+'</span></td>';
+        tb.appendChild(tr);
+      });
+
+      var tt=document.createElement('tr'); tt.className='tr-tot';
+      var sommes=[];
+      for(var k=0;k<6;k++){
+        var s=lignes.reduce(function(a,l){return a+l.mois[d0+k];},0);
+        sommes.push('<td class="num">'+(s?fmt0(s):'—')+'</td>');
+      }
+      var st=lignes.reduce(function(a,l){return a+((sem===1)?l.soldeS1:l.soldeS2);},0);
+      tt.innerHTML='<td class="sticky1">Dépôt attendu · '+
+        fmt0(lignes.reduce(function(a,l){return a+((sem===1)?l.loyerS1:l.loyerS2);},0))+' $/mois</td>'+
+        sommes.join('')+'<td class="num">'+fmt0(st)+'</td>';
+      tb.appendChild(tt);
+    });
+  }catch(e){ tb.innerHTML='<tr><td class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+}
+
+async function majPerception(logementId,mois,el){
+  var v=el.value.trim();
+  try{
+    await gsApi({action:'setPerception',logementId:logementId,annee:ANNEE,mois:mois,montant:v});
+    el.classList.toggle('paye', !!v);
+    chargé.pc=0; chargé.db=0; chargé.rp=0;
+    await chargerPerception(); chargé.pc=1;
+  }catch(e){ el.style.borderColor='var(--red)'; }
+}
+
+/* === DÉPENSES === */
+function basculerFormDep(){ document.getElementById('dep-form').classList.toggle('hidden'); }
+function basculerFormCom(){ document.getElementById('com-form').classList.toggle('hidden'); }
+
+async function chargerDepenses(){
+  var tb=document.getElementById('dep-body');
+  try{
+    var d=await gsApi({action:'getDepenses',annee:ANNEE});
+    var ls=d.depenses.filter(function(x){ return !IMM || x.immeubleId===IMM; });
+    if(!ls.length) tb.innerHTML='<tr><td colspan="7" class="empty">Aucune dépense.</td></tr>';
+    else{
+      tb.innerHTML='';
+      ls.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
+      ls.forEach(function(x){
+        var tr=document.createElement('tr');
+        tr.innerHTML='<td>'+dfr(x.date)+'</td><td>'+esc(nomPoste(x.posteId))+'</td>'+
+          '<td>'+esc(nomImm(x.immeubleId))+'</td><td>'+esc(x.description||'')+'</td>'+
+          '<td><span class="tag">'+(x.nature==='capital'?'Capital':'Courante')+'</span></td>'+
+          '<td class="num neg">'+fmt(x.montant)+'</td>'+
+          '<td><button class="btn" style="padding:2px 6px;font-size:9px" onclick="supprimer(\''+esc(x.id)+'\',\'depense\')">✕</button></td>';
+        tb.appendChild(tr);
+      });
+      var tt=document.createElement('tr'); tt.className='tr-tot';
+      tt.innerHTML='<td colspan="5">Total</td><td class="num neg">'+
+        fmt(ls.reduce(function(a,x){return a+Number(x.montant);},0))+'</td><td></td>';
+      tb.appendChild(tt);
+    }
+
+    var imms=REF.immeubles;
+    document.getElementById('com-head').innerHTML='<tr><th>Date</th><th>Poste</th><th>Description</th>'+
+      '<th class="num">Montant</th><th class="num">Part loc.</th>'+
+      imms.map(function(i){return '<th class="num">'+esc(i.nom)+'</th>';}).join('')+'<th></th></tr>';
+
+    var cb=document.getElementById('com-body');
+    if(!d.communes.length) cb.innerHTML='<tr><td colspan="'+(6+imms.length)+'" class="empty">Aucune dépense commune.</td></tr>';
+    else{
+      cb.innerHTML='';
+      d.communes.forEach(function(c){
+        var pl=(c.partLocative===''||c.partLocative==null)?1:Number(c.partLocative);
+        var tr=document.createElement('tr');
+        var cols=imms.map(function(i){
+          var part=(c.cle==='egales')?(1/imms.length):(d.parts[i.id]||0);
+          return '<td class="num">'+fmt(Number(c.montant)*pl*part)+'</td>';
+        }).join('');
+        tr.innerHTML='<td>'+dfr(c.date)+'</td><td>'+esc(nomPoste(c.posteId))+'</td>'+
+          '<td>'+esc(c.description||'')+'</td><td class="num neg">'+fmt(c.montant)+'</td>'+
+          '<td class="num">'+(pl===1?'<span class="bdg bdg-ok">100 %</span>':
+            '<span class="bdg bdg-warn">'+Math.round(pl*100)+' %</span>')+'</td>'+cols+
+          '<td><button class="btn" style="padding:2px 6px;font-size:9px" onclick="supprimer(\''+esc(c.id)+'\',\'commune\')">✕</button></td>';
+        cb.appendChild(tr);
+      });
+    }
+  }catch(e){ tb.innerHTML='<tr><td colspan="7" class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+}
+
+async function ajouterDepense(){
+  try{
+    await gsApi({action:'ajouterDepense',
+      date:document.getElementById('d-date').value,
+      immeubleId:document.getElementById('d-imm').value,
+      posteId:document.getElementById('d-poste').value,
+      nature:document.getElementById('d-nature').value,
+      montant:document.getElementById('d-montant').value,
+      description:document.getElementById('d-desc').value,
+      fournisseur:document.getElementById('d-four').value});
+    ['d-montant','d-desc','d-four'].forEach(function(id){ document.getElementById(id).value=''; });
+    chargé.db=0; chargé.sm=0; chargé.rp=0;
+    await chargerDepenses();
+  }catch(e){}
+}
+
+async function ajouterCommune(){
+  try{
+    await gsApi({action:'ajouterCommune',
+      date:document.getElementById('c-date').value,
+      posteId:document.getElementById('c-poste').value,
+      montant:document.getElementById('c-montant').value,
+      partLocative:document.getElementById('c-part').value,
+      cle:document.getElementById('c-cle').value,
+      description:document.getElementById('c-desc').value});
+    ['c-montant','c-desc'].forEach(function(id){ document.getElementById(id).value=''; });
+    chargé.db=0; chargé.sm=0; chargé.rp=0;
+    await chargerDepenses();
+  }catch(e){}
+}
+
+async function supprimer(id,type){
+  if(!confirm('Supprimer cette ligne ?')) return;
+  try{
+    await gsApi({action:'supprimerDepense',id:id,type:type});
+    chargé.db=0; chargé.sm=0; chargé.rp=0;
+    await chargerDepenses();
+  }catch(e){}
+}
+
+/* === SOMMAIRE PAR POSTE === */
+async function chargerSommaire(){
+  var tb=document.getElementById('somm-body');
+  try{
+    SOMM=await gsApi({action:'sommairePostes',annee:ANNEE});
+    document.getElementById('somm-head').innerHTML='<tr><th>Poste</th><th style="width:70px">T776</th>'+
+      SOMM.immeubles.map(function(i){return '<th class="num">'+esc(i.nom)+'</th>';}).join('')+
+      '<th class="num">Total</th></tr>';
+    if(!SOMM.lignes.length){ tb.innerHTML='<tr><td class="empty">Aucune dépense.</td></tr>'; return; }
+    tb.innerHTML='';
+    var grpCourant='';
+    SOMM.lignes.forEach(function(l){
+      if(l.groupe!==grpCourant){
+        grpCourant=l.groupe;
+        var g=document.createElement('tr'); g.className='tr-grp';
+        g.innerHTML='<td colspan="'+(3+SOMM.immeubles.length)+'">'+esc(grpCourant||'Autres')+'</td>';
+        tb.appendChild(g);
+      }
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td>'+esc(l.nom)+(l.deductible==='non'?' <span class="bdg bdg-warn">non déd.</span>':'')+'</td>'+
+        '<td class="sub">'+esc(l.ligneT776||'—')+'</td>'+
+        l.parImmeuble.map(function(v){return '<td class="num">'+(v?fmt(v):'—')+'</td>';}).join('')+
+        '<td class="num neg" style="font-weight:700">'+fmt(l.total)+'</td>';
+      tb.appendChild(tr);
+    });
+    var tt=document.createElement('tr'); tt.className='tr-tot';
+    tt.innerHTML='<td colspan="2">Total des dépenses '+ANNEE+'</td>'+
+      SOMM.totalParImmeuble.map(function(v){return '<td class="num">'+fmt(v)+'</td>';}).join('')+
+      '<td class="num">'+fmt(SOMM.total)+'</td>';
+    tb.appendChild(tt);
+  }catch(e){ tb.innerHTML='<tr><td class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+}
+
+function exporterSommaire(){
+  if(!SOMM) return;
+  var l=[['Poste','T776'].concat(SOMM.immeubles.map(function(i){return i.nom;})).concat(['Total'])];
+  SOMM.lignes.forEach(function(x){
+    l.push([x.nom,x.ligneT776||''].concat(x.parImmeuble.map(function(v){return String(v).replace('.',',');}))
+      .concat([String(x.total).replace('.',',')]));
+  });
+  l.push(['TOTAL',''].concat(SOMM.totalParImmeuble.map(function(v){return String(v).replace('.',',');}))
+    .concat([String(SOMM.total).replace('.',',')]));
+  var csv='\uFEFF'+l.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(';');}).join('\n');
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download='depenses-par-poste-'+ANNEE+'.csv'; a.click();
+}
+
+/* === IMMEUBLES === */
+async function chargerImmeubles(){
+  var box=document.getElementById('imm-cartes');
+  try{
+    var g=await gsApi({action:'getPerception',annee:ANNEE});
+    var parImm={};
+    g.lignes.forEach(function(l){ (parImm[l.immeubleId]=parImm[l.immeubleId]||[]).push(l); });
+    var html='';
+    REF.immeubles.filter(function(i){ return !IMM || i.id===IMM; }).forEach(function(i){
+      var ls=parImm[i.id]||[];
+      var s1=ls.reduce(function(a,l){return a+l.loyerS1;},0);
+      var s2=ls.reduce(function(a,l){return a+l.loyerS2;},0);
+      html+='<div class="addcard"><div style="display:flex;align-items:baseline;gap:12px;margin-bottom:10px">'+
+        '<b style="font-size:15px;font-family:var(--serif)">'+esc(i.nom)+'</b>'+
+        '<span class="sub">'+esc(i.adresse||'')+', '+esc(i.ville||'')+'</span>'+
+        '<span class="sub" style="margin-left:auto">Dépôt '+fmt0(s1)+' $ → '+fmt0(s2)+' $ / mois</span></div>'+
+        '<div class="tbl-wrap"><table><thead><tr><th>Logement</th><th>Locataire</th>'+
+        '<th class="num">Loyer janv–juin</th><th class="num">Loyer juil–déc</th><th class="num">Écart</th></tr></thead><tbody>';
+      ls.forEach(function(l){
+        var ec=l.loyerS2-l.loyerS1;
+        html+='<tr><td><b>'+esc(l.numero)+'</b></td><td>'+esc(l.locataire||'—')+'</td>'+
+          '<td class="num"><input class="mini" value="'+(l.loyerS1||'')+'" onchange="majLoyer(\''+l.logementId+'\',1,this)"></td>'+
+          '<td class="num"><input class="mini" value="'+(l.loyerS2||'')+'" onchange="majLoyer(\''+l.logementId+'\',2,this)"></td>'+
+          '<td class="num '+cls(ec)+'">'+(ec?fmt0(ec)+' $ · '+(l.loyerS1?(ec/l.loyerS1*100).toFixed(1):'0')+' %':'—')+'</td></tr>';
+      });
+      html+='<tr class="tr-tot"><td colspan="2">Total mensuel</td><td class="num">'+fmt0(s1)+'</td>'+
+        '<td class="num">'+fmt0(s2)+'</td><td class="num">'+(s1?((s2-s1)/s1*100).toFixed(1)+' %':'—')+'</td></tr>';
+      html+='</tbody></table></div></div>';
+    });
+    box.innerHTML=html||'<div class="empty">Aucun immeuble.</div>';
+  }catch(e){ box.innerHTML='<div class="empty">Erreur : '+esc(e.message)+'</div>'; }
+}
+
+async function majLoyer(logementId,semestre,el){
+  try{
+    await gsApi({action:'setLoyer',logementId:logementId,annee:ANNEE,semestre:semestre,montant:el.value});
+    chargé.im=0; chargé.pc=0; chargé.av=0;
+    await chargerImmeubles(); chargé.im=1;
+  }catch(e){ el.style.borderColor='var(--red)'; }
+}
+
+/* === BAUX === */
+async function chargerBaux(){
+  var tb=document.getElementById('baux-body');
+  try{
+    var g=await gsApi({action:'getPerception',annee:ANNEE});
+    var parLog={}; g.lignes.forEach(function(l){ parLog[l.logementId]=l; });
+    var ls=REF.baux.filter(function(b){ return !IMM || b.immeubleId===IMM; });
+    if(!ls.length){ tb.innerHTML='<tr><td colspan="6" class="empty">Aucun bail.</td></tr>'; return; }
+    tb.innerHTML='';
+    ls.forEach(function(b){
+      var l=parLog[b.logementId]||{};
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td><b>'+esc(b.locataire)+'</b>'+
+        (b.telephone||b.courriel?'<div class="sub">'+esc([b.telephone,b.courriel].filter(Boolean).join(' · '))+'</div>':'')+'</td>'+
+        '<td>'+esc(nomImm(b.immeubleId))+' · '+esc(l.numero||'—')+'</td>'+
+        '<td class="num">'+fmt(l.loyerS1||0)+'</td><td class="num">'+fmt(l.loyerS2||0)+'</td>'+
+        '<td>'+dfr(b.dateDebut)+' → '+dfr(b.dateFin)+'</td>'+
+        '<td style="white-space:normal;max-width:280px">'+esc(b.notes||'')+'</td>';
+      tb.appendChild(tr);
+    });
+  }catch(e){ tb.innerHTML='<tr><td colspan="6" class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+}
+
+/* === AVIS D'AUGMENTATION === */
+async function chargerAvis(){
+  var tb=document.getElementById('avis-body');
+  try{
+    AVIS=await gsApi({action:'avisLoyer',annee:ANNEE});
+    var d=AVIS.delai;
+    document.getElementById('avis-delai').innerHTML='<div class="note'+(d.conforme?'':' rouge')+'">'+
+      (d.conforme
+        ? '<b>Délai respecté :</b> '+d.jours+' jours avant la fin du bail au '+dfr(d.finBailCourant)+'.'
+        : '<b>Vérifie le délai :</b> '+d.jours+' jours séparent aujourd\'hui de la fin du bail au '+
+          dfr(d.finBailCourant)+'. Pour un bail de 12 mois, l\'avis se donne de 3 à 6 mois avant '+
+          'l\'échéance, soit entre le '+dfr(d.fenetre.du)+' et le '+dfr(d.fenetre.au)+'.')+'</div>';
+
+    var ls=AVIS.lignes.filter(function(l){ return !IMM || nomImm(IMM)===l.immeuble; });
+    tb.innerHTML='';
+    ls.forEach(function(l){
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td><input type="checkbox" data-log="'+esc(l.logementId)+'" onchange="rendreAvis()"></td>'+
+        '<td>'+esc(l.immeuble)+' · <b>'+esc(l.numero)+'</b></td><td>'+esc(l.locataire||'—')+'</td>'+
+        '<td class="num">'+fmt(l.loyerActuel)+'</td>'+
+        '<td class="num">'+(l.loyerNouveau?fmt(l.loyerNouveau):'<span class="sub">à saisir</span>')+'</td>'+
+        '<td class="num '+cls(l.hausse)+'">'+(l.loyerNouveau?fmt(l.hausse)+' $ · '+l.haussePct+' %':'—')+'</td>';
+      tb.appendChild(tr);
+    });
+    rendreAvis();
+  }catch(e){ tb.innerHTML='<tr><td colspan="6" class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+}
+
+function toutSelectionner(v){
+  document.querySelectorAll('#avis-body input[type=checkbox]').forEach(function(c){ c.checked=v; });
+  rendreAvis();
+}
+
+function rendreAvis(){
+  if(!AVIS) return;
+  var choisis={};
+  document.querySelectorAll('#avis-body input[type=checkbox]').forEach(function(c){
+    if(c.checked) choisis[c.dataset.log]=1;
+  });
+  var box=document.getElementById('avis-imprimes');
+  var p=AVIS.proprietaire, b=AVIS.bail;
+  var jour=new Date().toISOString().slice(0,10);
+  box.innerHTML=AVIS.lignes.filter(function(l){ return choisis[l.logementId]; }).map(function(l){
+    return '<div class="avis">'+
+      '<h3>Avis d\'augmentation de loyer et de modification d\'une autre condition du bail</h3>'+
+      '<div class="loi">(selon les articles 1942 et 1943 du Code civil du Québec)</div>'+
+      '<div style="margin-bottom:6px">Avis à <span class="rl" style="min-width:280px;font-family:var(--syne)">'+esc(l.locataire)+'</span></div>'+
+      '<div style="margin-bottom:12px">Adresse : <span class="rl" style="min-width:60px">'+esc(l.numero)+'</span>'+
+      '<span class="rl" style="min-width:300px;font-family:var(--syne)">'+esc(l.adresse)+', '+esc(l.ville)+'</span></div>'+
+      '<div>Au renouvellement de votre bail, certaines conditions en seront modifiées :</div>'+
+      '<div class="sect">Montant du loyer</div>'+
+      '<div>Votre loyer actuel de <span class="rl">'+fmt(l.loyerActuel)+' $</span> sera augmenté à '+
+      '<span class="rl">'+(l.loyerNouveau?fmt(l.loyerNouveau)+' $':'')+'</span></div>'+
+      '<div class="sect">Durée du bail</div>'+
+      '<div>Votre bail sera renouvelé du <span class="rl">'+dfr(b.debut)+'</span> au <span class="rl">'+dfr(b.fin)+'</span></div>'+
+      '<div class="sub" style="margin-top:3px"><span style="display:inline-block;width:150px">( jour / mois / année )</span>( jour / mois / année )</div>'+
+      '<div class="sect">Autres conditions</div>'+
+      '<div class="blanc"></div><div class="blanc"></div><div class="blanc"></div>'+
+      '<div class="cadre"><b>Avis au locataire :</b> SI VOUS REFUSEZ la (les) modification(s) ou SI VOUS DÉMÉNAGEZ '+
+      'à la fin du bail, VOUS DEVEZ RÉPONDRE à cet avis dans le MOIS de sa réception, sinon le bail sera '+
+      'renouvelé aux nouvelles conditions.</div>'+
+      '<div class="sig"><div><div class="lg" style="font-family:var(--mono)">'+dfr(jour)+'</div><div class="lb">Date</div></div>'+
+      '<div><div class="lg">'+esc(p.nom)+'</div><div class="lb">Nom du propriétaire</div></div></div>'+
+      '<div class="sig"><div><div class="lg"></div><div class="lb">Signature</div></div>'+
+      '<div><div class="lg">'+esc(p.adresse||'')+'</div><div class="lb">Adresse</div></div></div>'+
+      '<div style="margin-top:18px;font-weight:700;font-size:11px">Accusé de réception, si l\'avis est remis au locataire de main à main</div>'+
+      '<div style="font-size:11px;margin-top:3px">J\'accuse réception de cet avis, le</div>'+
+      '<div class="sig"><div><div class="lg"></div><div class="lb">Date</div></div>'+
+      '<div><div class="lg"></div><div class="lb">Nom et signature du locataire</div></div></div>'+
+      '<div class="pied">Pour répondre à cet avis, le locataire peut utiliser le modèle de réponse proposé par le '+
+      'Tribunal administratif du logement ; il peut être obtenu sur Internet (www.tal.gouv.qc.ca), dans les '+
+      'bureaux du Tribunal ou par la poste, sur demande.</div></div>';
+  }).join('');
+}
+
+/* === RAPPORT FISCAL === */
+async function chargerRapport(){
+  var tb=document.getElementById('rap-body');
+  try{
+    var r=await gsApi({action:'rapportFiscal',annee:ANNEE,immeubleId:IMM});
+    document.getElementById('rap-titre').textContent='État des revenus et dépenses de location — '+ANNEE;
+    document.getElementById('rap-soustitre').textContent=(IMM?nomImm(IMM):'Tous les immeubles')+' · base de caisse';
+    var h='';
+    h+='<tr class="tr-grp"><td colspan="3">Revenus bruts de location</td></tr>';
+    h+='<tr><td class="sub">8141</td><td>Loyers résidentiels encaissés</td><td class="num pos">'+fmt(r.revenus)+'</td></tr>';
+    h+='<tr class="tr-tot"><td></td><td>Revenus bruts</td><td class="num pos">'+fmt(r.revenus)+'</td></tr>';
+
+    h+='<tr class="tr-grp"><td colspan="3">Dépenses déductibles</td></tr>';
+    if(!r.deductibles.length) h+='<tr><td colspan="3" class="empty">Aucune dépense.</td></tr>';
+    r.deductibles.forEach(function(x){
+      h+='<tr><td class="sub">'+esc(x.ligneT776||'—')+'</td><td>'+esc(x.nom)+'</td>'+
+         '<td class="num neg">'+fmt(x.montant)+'</td></tr>';
+    });
+    h+='<tr class="tr-tot"><td></td><td>Total des dépenses déductibles</td><td class="num neg">'+fmt(r.totalDeductibles)+'</td></tr>';
+    h+='<tr class="tr-tot"><td></td><td style="font-size:13px">Revenu net avant amortissement</td>'+
+       '<td class="num '+cls(r.netAvantAmortissement)+'" style="font-size:13px">'+fmt(r.netAvantAmortissement)+'</td></tr>';
+
+    if(r.nonDeductibles.length){
+      h+='<tr class="tr-grp"><td colspan="3">Montants exclus de la déduction</td></tr>';
+      r.nonDeductibles.forEach(function(x){
+        h+='<tr><td class="sub">—</td><td>'+esc(x.nom)+(x.note?'<div class="sub" style="white-space:normal">'+esc(x.note)+'</div>':'')+'</td>'+
+           '<td class="num">'+fmt(x.montant)+'</td></tr>';
+      });
+    }
+    if(r.exclusUsagePersonnel>0.005){
+      h+='<tr><td class="sub">—</td><td>Part personnelle retranchée des dépenses communes</td>'+
+         '<td class="num">'+fmt(r.exclusUsagePersonnel)+'</td></tr>';
+    }
+    if(r.additionsCapital>0.005){
+      h+='<tr class="tr-grp"><td colspan="3">Additions aux biens amortissables</td></tr>';
+      h+='<tr><td class="sub">9936</td><td>Total des additions (à amortir)</td>'+
+         '<td class="num">'+fmt(r.additionsCapital)+'</td></tr>';
+    }
+    tb.innerHTML=h;
+  }catch(e){ tb.innerHTML='<tr><td colspan="3" class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+}
+
+/* === IMPORT DE JOURNAL === */
+async function importerJournal(){
+  var txt=document.getElementById('imp-txt').value.trim();
+  var res=document.getElementById('imp-res');
+  if(!txt){ res.innerHTML='<div class="note">Colle d\'abord les lignes du journal.</div>'; return; }
+  var lignes=txt.split('\n').map(function(l){return l.trim();}).filter(Boolean).map(function(l,i){
+    var c=l.split(/[;\t]/).map(function(x){return x.trim().replace(/^"|"$/g,'');});
+    if(i===0&&/^date$/i.test(c[0])) return null;
+    return { date:c[0], immeuble:c[1], poste:c[2], nature:c[3], description:c[4], fournisseur:c[5], montant:c[6] };
+  }).filter(Boolean);
+
+  try{
+    var r=await gsApiPost({action:'importerJournal',lignes:lignes});
+    var h='<div class="note"><b>'+r.propres+' dépenses</b> et <b>'+r.communes+' dépenses communes</b> ajoutées.</div>';
+    if(r.rejets.length){
+      h+='<div class="note rouge"><b>'+r.rejets.length+' lignes écartées</b> — rien n\'a été écrit pour celles-ci :<br>'+
+        r.rejets.map(function(x){ return 'ligne '+x.ligne+' : '+esc(x.raison); }).join('<br>')+'</div>';
+    }
+    res.innerHTML=h;
+    document.getElementById('imp-txt').value='';
+    chargé.dp=0; chargé.db=0; chargé.sm=0; chargé.rp=0;
+  }catch(e){ res.innerHTML='<div class="note rouge">Erreur : '+esc(e.message)+'</div>'; }
+}
+
+/* Démarrage */
+initApp();
+</script>
+</body>
+</html>
