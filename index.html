@@ -139,6 +139,38 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
 .avis .pied{font-size:9.5px;color:var(--red);margin-top:16px;line-height:1.4}
 .blanc{border-bottom:1px solid #ccc;height:17px}
 
+
+/* Graphique mensuel — SVG maison, sans dépendance externe */
+.chart{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:18px}
+.chart h4{font-family:var(--cond);font-size:16px;font-weight:700;margin-bottom:12px}
+.chart svg{width:100%;height:auto;display:block;overflow:visible}
+.chart .axe{stroke:#E3E8E6;stroke-width:1;stroke-dasharray:2 4}
+.chart .lbl-x,.chart .lbl-y{font-family:var(--syne);font-size:11px;fill:var(--muted)}
+.chart .lbl-y{text-anchor:end}
+.chart .lbl-x{text-anchor:middle}
+.chart .bar-r{fill:var(--green)}
+.chart .bar-d{fill:var(--red)}
+.chart .bar-r:hover,.chart .bar-d:hover{opacity:.75}
+.chart-leg{display:flex;gap:18px;justify-content:center;margin-top:10px;font-size:12px;color:var(--muted)}
+.chart-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+
+/* Perception : versement partiel et note */
+.cell.partiel{background:var(--amber-bg);color:var(--amber);font-weight:500}
+.cellbox{position:relative}
+.mk{position:absolute;top:1px;right:1px;width:0;height:0;border-top:6px solid var(--encre);
+  border-left:6px solid transparent;cursor:pointer}
+.cellbox .mk-vide{position:absolute;bottom:0;right:2px;font-size:9px;color:var(--dim);cursor:pointer;
+  opacity:0;transition:opacity .15s;line-height:1}
+.cellbox:hover .mk-vide{opacity:1}
+
+/* Modale de note */
+.voile{position:fixed;inset:0;background:rgba(22,33,29,.55);display:flex;align-items:flex-start;
+  justify-content:center;padding:60px 14px;z-index:200;overflow-y:auto}
+.modal{background:var(--s1);border-radius:10px;width:100%;max-width:460px;padding:20px}
+.modal h4{font-family:var(--cond);font-size:18px;font-weight:700;margin-bottom:4px}
+.modal .qui{font-size:12.5px;color:var(--muted);margin-bottom:14px}
+.modal-act{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+
 @media print{
   .noprint{display:none!important}
   body{background:#fff}
@@ -187,6 +219,7 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
 <section id="tab-dash">
   <div class="sec"><span>Tableau de bord — exercice <span class="an-txt"></span></span></div>
   <div class="grid4" id="db-blocs"></div>
+  <div class="chart" id="db-chart"></div>
   <div class="sec"><span>Rendement par immeuble</span></div>
   <div class="tbl-wrap">
     <table>
@@ -211,7 +244,10 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
   <div class="note">
     Le solde reprend la formule du chiffrier : <b>loyer × mois échus − encaissements</b>.
     Un montant entre parenthèses est dû par le locataire, un montant en vert est un surplus.
-    Les mois échus se recalculent selon la date du jour, donc les soldes évoluent seuls.
+    Les mois échus se recalculent selon la date du jour, donc les soldes évoluent seuls.<br><br>
+    Une case <b>verte</b> est payée au complet, une case <b>ocre</b> est un versement partiel.
+    Le coin noir signale une note : survole-le pour la lire, clique pour la modifier.
+    Passe la souris sur une case vide et clique le ✎ pour en ajouter une.
   </div>
 </section>
 
@@ -386,6 +422,8 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
 
 </div>
 
+<div id="note-modal"></div>
+
 <script>
 /* MDImmo — frontend. Mêmes conventions que MDCompta :
    gsApi({action}), _gsLire avec reprise, setStatus, fmt/cls/esc, chargé{}. */
@@ -527,6 +565,44 @@ function blk(t,v,s,fort){
   return '<div class="blk'+(fort?' fort':'')+'"><div class="t">'+esc(t)+'</div>'+
          '<div class="v">'+v+'</div><div class="s">'+esc(s)+'</div></div>';
 }
+
+/* Graphique à barres groupées en SVG. Aucune bibliothèque : le fichier reste
+   autonome, s'imprime proprement et se met à l'échelle sans redessin. */
+function dessinerGraphique(parMois){
+  var L=760,H=260,mg={h:34,b:34,g:56,d:8};
+  var iL=L-mg.g-mg.d, iH=H-mg.h-mg.b;
+  var max=0;
+  parMois.forEach(function(m){ max=Math.max(max,m.revenus,m.depenses); });
+  if(max<=0) max=1;
+  // Échelle arrondie au palier lisible supérieur
+  var pas=Math.pow(10,Math.floor(Math.log10(max)));
+  var haut=Math.ceil(max/pas)*pas; if(haut/max>2) haut=Math.ceil(max/(pas/2))*(pas/2);
+  var y=function(v){ return mg.h+iH-(v/haut)*iH; };
+
+  var lg=iL/parMois.length, bw=Math.max(4,Math.min(16,lg/2-4));
+  var g='';
+  // Lignes horizontales + graduations
+  for(var t=0;t<=4;t++){
+    var v=haut*t/4, yy=y(v);
+    g+='<line class="axe" x1="'+mg.g+'" y1="'+yy+'" x2="'+(L-mg.d)+'" y2="'+yy+'"></line>'+
+       '<text class="lbl-y" x="'+(mg.g-8)+'" y="'+(yy+4)+'">'+fmt0(v)+' $</text>';
+  }
+  parMois.forEach(function(m,i){
+    var cx=mg.g+lg*i+lg/2;
+    var hr=(m.revenus/haut)*iH, hd=(m.depenses/haut)*iH;
+    if(m.revenus>0) g+='<rect class="bar-r" x="'+(cx-bw-1)+'" y="'+y(m.revenus)+'" width="'+bw+'" height="'+hr+'" rx="2">'+
+      '<title>'+esc(m.mois)+' — loyers '+fmt(m.revenus)+' $</title></rect>';
+    if(m.depenses>0) g+='<rect class="bar-d" x="'+(cx+1)+'" y="'+y(m.depenses)+'" width="'+bw+'" height="'+hd+'" rx="2">'+
+      '<title>'+esc(m.mois)+' — dépenses '+fmt(m.depenses)+' $</title></rect>';
+    g+='<text class="lbl-x" x="'+cx+'" y="'+(H-mg.b+18)+'">'+esc(m.mois.slice(0,4))+'</text>';
+  });
+
+  return '<h4>Loyers encaissés et dépenses par mois</h4>'+
+    '<svg viewBox="0 0 '+L+' '+H+'" role="img" aria-label="Loyers et dépenses par mois">'+g+'</svg>'+
+    '<div class="chart-leg"><span><i style="background:var(--green)"></i>Loyers</span>'+
+    '<span><i style="background:var(--red)"></i>Dépenses</span></div>';
+}
+
 async function chargerDash(){
   try{
     var d=await gsApi({action:'tableauBord',annee:ANNEE});
@@ -536,6 +612,7 @@ async function chargerDash(){
       blk('Net avant amortissement',fmt(d.net)+' $','Revenus moins dépenses',true)+
       blk('Loyers dus',fmt(d.montantDu)+' $','Cumul à ce jour')+
       blk('Additions au capital',fmt(d.capital)+' $','À amortir (DPA)');
+    document.getElementById('db-chart').innerHTML=dessinerGraphique(d.parMois);
 
     var tb=document.getElementById('db-body'); tb.innerHTML='';
     var lignes=d.parImmeuble.filter(function(i){ return !IMM || i.id===IMM; });
@@ -596,10 +673,15 @@ async function chargerPerception(){
         var tr=document.createElement('tr');
         var cells=[];
         for(var k=0;k<6;k++){
-          var m=d0+k+1, v=l.mois[d0+k];
-          cells.push('<td><input class="cell'+(v?' paye':'')+'" value="'+(v||'')+'" '+
-            'onchange="majPerception(\''+l.logementId+'\','+m+',this)" '+
-            'aria-label="'+esc(l.numero+' '+mois[d0+k])+'"></td>');
+          var m=d0+k+1, v=l.mois[d0+k], nt=(l.notes||[])[d0+k]||'', pt=(l.partiel||[])[d0+k];
+          var etat = pt ? ' partiel' : (v ? ' paye' : '');
+          cells.push('<td class="cellbox">'+
+            '<input class="cell'+etat+'" value="'+(v||'')+'" '+
+              'onchange="majPerception(\''+l.logementId+'\','+m+',this)" '+
+              'title="'+esc(nt||'')+'" aria-label="'+esc(l.numero+' '+mois[d0+k]+(nt?' — '+nt:''))+'">'+
+            (nt ? '<span class="mk" title="'+esc(nt)+'" onclick="ouvrirNote(\''+l.logementId+'\','+m+')"></span>'
+                : '<span class="mk-vide" title="Ajouter une note" onclick="ouvrirNote(\''+l.logementId+'\','+m+')">✎</span>')+
+            '</td>');
         }
         tr.innerHTML='<td class="sticky1"><b>'+esc(l.numero)+'</b> <span class="sub">'+fmt0(loyer)+' $</span>'+
           '<div class="sub">'+esc(l.immeuble)+' · '+esc(l.locataire||'—')+'</div></td>'+
@@ -627,11 +709,63 @@ async function chargerPerception(){
 async function majPerception(logementId,mois,el){
   var v=el.value.trim();
   try{
+    /* pas de champ note ici : le backend conserve celle déjà en place */
     await gsApi({action:'setPerception',logementId:logementId,annee:ANNEE,mois:mois,montant:v});
     el.classList.toggle('paye', !!v);
     chargé.pc=0; chargé.db=0; chargé.rp=0;
     await chargerPerception(); chargé.pc=1;
   }catch(e){ el.style.borderColor='var(--red)'; }
+}
+
+
+/* Note attachée à un mois de perception. Sert surtout aux versements partiels :
+   « a payé 300 $, doit le reste le 15 ». La note vit avec l'encaissement et
+   survit à la modification du montant. */
+function ouvrirNote(logementId,mois){
+  var l=PERC.lignes.filter(function(x){return x.logementId===logementId;})[0];
+  if(!l) return;
+  var moisNoms=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  var v=l.mois[mois-1], nt=(l.notes||[])[mois-1]||'';
+  var attendu=(mois<=6)?l.loyerS1:l.loyerS2;
+  var reste=attendu-v;
+  document.getElementById('note-modal').innerHTML=
+    '<div class="voile" onclick="if(event.target===this)fermerNote()">'+
+    '<div class="modal" role="dialog" aria-modal="true">'+
+    '<h4>'+esc(moisNoms[mois-1])+' — logement '+esc(l.numero)+'</h4>'+
+    '<div class="qui">'+esc(l.locataire||'—')+' · loyer '+fmt(attendu)+' $'+
+      (v?' · versé '+fmt(v)+' $':'')+
+      (reste>0.005?' · <b style="color:var(--red)">reste '+fmt(reste)+' $</b>':'')+'</div>'+
+    '<div class="fld"><label class="lbl">Montant versé</label>'+
+      '<input class="inp" id="nt-montant" value="'+(v||'')+'" inputmode="decimal"></div>'+
+    '<div class="fld" style="margin-top:10px"><label class="lbl">Note</label>'+
+      '<textarea class="inp" id="nt-texte" rows="3" style="font-family:var(--syne);font-size:14px;white-space:normal" '+
+      'placeholder="Paiement partiel de 300 $, doit payer le reste le 15.">'+esc(nt)+'</textarea></div>'+
+    '<div class="modal-act">'+
+      (nt?'<button class="btn btn-r" onclick="effacerNote(\''+logementId+'\','+mois+')">Effacer la note</button>':'')+
+      '<button class="btn" onclick="fermerNote()">Annuler</button>'+
+      '<button class="btn btn-g" onclick="enregistrerNote(\''+logementId+'\','+mois+')">Enregistrer</button>'+
+    '</div></div></div>';
+  setTimeout(function(){ var t=document.getElementById('nt-texte'); if(t) t.focus(); },40);
+}
+function fermerNote(){ document.getElementById('note-modal').innerHTML=''; }
+
+async function enregistrerNote(logementId,mois){
+  var mt=document.getElementById('nt-montant').value.trim();
+  var nt=document.getElementById('nt-texte').value.trim();
+  try{
+    await gsApi({action:'setPerception',logementId:logementId,annee:ANNEE,mois:mois,montant:mt,note:nt});
+    fermerNote();
+    chargé.db=0; chargé.rp=0;
+    await chargerPerception();
+  }catch(e){}
+}
+async function effacerNote(logementId,mois){
+  try{
+    var mt=document.getElementById('nt-montant').value.trim();
+    await gsApi({action:'setPerception',logementId:logementId,annee:ANNEE,mois:mois,montant:mt,note:''});
+    fermerNote();
+    await chargerPerception();
+  }catch(e){}
 }
 
 /* === DÉPENSES === */
