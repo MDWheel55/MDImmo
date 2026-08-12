@@ -157,10 +157,31 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
 /* Perception : versement partiel et note */
 .cell.partiel{background:var(--amber-bg);color:var(--amber);font-weight:500}
 .cellbox{position:relative}
-.mk{position:absolute;top:1px;right:1px;width:0;height:0;border-top:6px solid var(--encre);
-  border-left:6px solid transparent;cursor:pointer}
-.cellbox .mk-vide{position:absolute;bottom:0;right:2px;font-size:9px;color:var(--dim);cursor:pointer;
-  opacity:0;transition:opacity .15s;line-height:1}
+.mk{position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;
+  background:var(--amber);border:1.5px solid var(--s1);cursor:pointer;box-shadow:0 0 0 1px var(--amber-bd)}
+.mk:hover{background:var(--encre)}
+.cellbox .mk-vide{position:absolute;bottom:1px;right:3px;font-size:10px;color:var(--dim);cursor:pointer;
+  opacity:.35;transition:opacity .15s;line-height:1}
+.cellbox:hover .mk-vide{opacity:1;color:var(--green)}
+/* Cellule verrouillée : plusieurs versements, le total ne se modifie pas ici */
+.cell.verrou{cursor:pointer;background:var(--amber-bg);color:var(--amber);font-weight:600;
+  border:1px dashed var(--amber-bd)}
+.cell.verrou:hover{border-color:var(--amber)}
+.nb-vers{position:absolute;bottom:1px;left:3px;font-family:var(--mono);font-size:9px;
+  color:var(--amber);font-weight:600;line-height:1;pointer-events:none}
+/* Liste des versements dans la fiche du mois */
+.vers-liste{border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:12px}
+.vers-l{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #EDF0EE;font-size:13px}
+.vers-l:last-child{border-bottom:none}
+.vers-l input[type=date]{width:132px}
+.vers-l .vm{width:88px;font-family:var(--mono);text-align:right}
+.vers-l .vn{flex:1;min-width:80px}
+.vers-l input{border:1px solid var(--border);border-radius:4px;padding:5px 7px;font-size:12.5px;background:var(--s1);color:var(--text)}
+.vers-l input:focus{outline:none;border-color:var(--green)}
+.vers-x{border:none;background:none;color:var(--dim);cursor:pointer;font-size:15px;padding:2px 5px;border-radius:4px}
+.vers-x:hover{background:var(--red-bg);color:var(--red)}
+.vers-tot{display:flex;justify-content:space-between;padding:9px 10px;background:var(--s3);
+  font-family:var(--mono);font-size:12.5px;font-weight:600}
 .cellbox:hover .mk-vide{opacity:1}
 
 /* Modale de note */
@@ -243,11 +264,15 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
   </table></div>
   <div class="note">
     Le solde reprend la formule du chiffrier : <b>loyer × mois échus − encaissements</b>.
-    Un montant entre parenthèses est dû par le locataire, un montant en vert est un surplus.
-    Les mois échus se recalculent selon la date du jour, donc les soldes évoluent seuls.<br><br>
-    Une case <b>verte</b> est payée au complet, une case <b>ocre</b> est un versement partiel.
-    Le coin noir signale une note : survole-le pour la lire, clique pour la modifier.
-    Passe la souris sur une case vide et clique le ✎ pour en ajouter une.
+    Entre parenthèses, c'est dû par le locataire ; en vert, c'est un surplus.<br><br>
+    <b>Où modifier quoi.</b> Tape directement dans une case tant que le mois ne compte
+    qu'un seul versement. Dès qu'il y en a deux ou plus, la case affiche le total en
+    ocre pointillé avec le nombre de versements (<code>2×</code>) et devient non
+    modifiable : clique dessus pour ouvrir la fiche du mois, seul endroit où l'on
+    ajoute, corrige ou supprime des versements.<br><br>
+    <b>Couleurs.</b> Vert = payé au complet · ocre = partiel · pointillé = plusieurs
+    versements. La <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber);vertical-align:1px"></span>
+    pastille signale une note ; survole-la pour la lire. Le ✎ ouvre la fiche du mois.
   </div>
 </section>
 
@@ -674,13 +699,18 @@ async function chargerPerception(){
         var cells=[];
         for(var k=0;k<6;k++){
           var m=d0+k+1, v=l.mois[d0+k], nt=(l.notes||[])[d0+k]||'', pt=(l.partiel||[])[d0+k];
-          var etat = pt ? ' partiel' : (v ? ' paye' : '');
+          var nb=(l.nbVers||[])[d0+k]||0;
+          var multi = nb>1;
+          var etat = multi ? ' verrou' : (pt ? ' partiel' : (v ? ' paye' : ''));
+          var bulle = multi ? (nb+' versements — clique pour les gérer'+(nt?' · '+nt:'')) : nt;
           cells.push('<td class="cellbox">'+
-            '<input class="cell'+etat+'" value="'+(v||'')+'" '+
-              'onchange="majPerception(\''+l.logementId+'\','+m+',this)" '+
-              'title="'+esc(nt||'')+'" aria-label="'+esc(l.numero+' '+mois[d0+k]+(nt?' — '+nt:''))+'">'+
+            '<input class="cell'+etat+'" value="'+(v||'')+'"'+
+              (multi ? ' readonly onclick="ouvrirNote(\''+l.logementId+'\','+m+')"'
+                     : ' onchange="majPerception(\''+l.logementId+'\','+m+',this)"')+
+              ' title="'+esc(bulle||'')+'" aria-label="'+esc(l.numero+' '+mois[d0+k]+(bulle?' — '+bulle:''))+'">'+
+            (multi ? '<span class="nb-vers">'+nb+'×</span>' : '')+
             (nt ? '<span class="mk" title="'+esc(nt)+'" onclick="ouvrirNote(\''+l.logementId+'\','+m+')"></span>'
-                : '<span class="mk-vide" title="Ajouter une note" onclick="ouvrirNote(\''+l.logementId+'\','+m+')">✎</span>')+
+                : '<span class="mk-vide" title="Ouvrir la fiche du mois" onclick="ouvrirNote(\''+l.logementId+'\','+m+')">✎</span>')+
             '</td>');
         }
         tr.innerHTML='<td class="sticky1"><b>'+esc(l.numero)+'</b> <span class="sub">'+fmt0(loyer)+' $</span>'+
@@ -706,65 +736,116 @@ async function chargerPerception(){
   }catch(e){ tb.innerHTML='<tr><td class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
 }
 
+/* Saisie rapide depuis la grille. Elle ne pilote que le versement unique du
+   mois ; le backend refuse si le mois en compte plusieurs, et on ouvre alors
+   la fiche pour que la modification se fasse au bon endroit. */
 async function majPerception(logementId,mois,el){
   var v=el.value.trim();
   try{
-    /* pas de champ note ici : le backend conserve celle déjà en place */
     await gsApi({action:'setPerception',logementId:logementId,annee:ANNEE,mois:mois,montant:v});
-    el.classList.toggle('paye', !!v);
     chargé.pc=0; chargé.db=0; chargé.rp=0;
     await chargerPerception(); chargé.pc=1;
-  }catch(e){ el.style.borderColor='var(--red)'; }
+  }catch(e){
+    if(/versements/.test(e.message)) ouvrirNote(logementId,mois);
+    else el.style.borderColor='var(--red)';
+  }
 }
 
 
-/* Note attachée à un mois de perception. Sert surtout aux versements partiels :
-   « a payé 300 $, doit le reste le 15 ». La note vit avec l'encaissement et
-   survit à la modification du montant. */
+/* FICHE DU MOIS — l'unique endroit où l'on gère plusieurs versements.
+   Chaque ligne est un versement autonome : date, montant, note. Le total du
+   mois en découle, et le solde du semestre suit. */
+const MOIS_LONGS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+let FICHE=null;
+
 function ouvrirNote(logementId,mois){
   var l=PERC.lignes.filter(function(x){return x.logementId===logementId;})[0];
   if(!l) return;
-  var moisNoms=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
-  var v=l.mois[mois-1], nt=(l.notes||[])[mois-1]||'';
+  FICHE={logementId:logementId,mois:mois};
+  var vs=((l.versements||[])[mois-1]||[]).slice();
   var attendu=(mois<=6)?l.loyerS1:l.loyerS2;
-  var reste=attendu-v;
+  var total=vs.reduce(function(a,v){return a+Number(v.montant||0);},0);
+  var reste=attendu-total;
+
+  var lignes=vs.map(function(v){
+    return '<div class="vers-l" data-id="'+esc(v.id)+'">'+
+      '<input type="date" value="'+esc((v.date||'').slice(0,10))+'" aria-label="Date du versement">'+
+      '<input class="vm" value="'+(v.montant||'')+'" inputmode="decimal" aria-label="Montant">'+
+      '<input class="vn" value="'+esc(v.note||'')+'" placeholder="Note (facultatif)" aria-label="Note">'+
+      '<button class="vers-x" title="Supprimer ce versement" onclick="supprimerVersement(\''+esc(v.id)+'\')">✕</button>'+
+    '</div>';
+  }).join('');
+
   document.getElementById('note-modal').innerHTML=
     '<div class="voile" onclick="if(event.target===this)fermerNote()">'+
-    '<div class="modal" role="dialog" aria-modal="true">'+
-    '<h4>'+esc(moisNoms[mois-1])+' — logement '+esc(l.numero)+'</h4>'+
-    '<div class="qui">'+esc(l.locataire||'—')+' · loyer '+fmt(attendu)+' $'+
-      (v?' · versé '+fmt(v)+' $':'')+
-      (reste>0.005?' · <b style="color:var(--red)">reste '+fmt(reste)+' $</b>':'')+'</div>'+
-    '<div class="fld"><label class="lbl">Montant versé</label>'+
-      '<input class="inp" id="nt-montant" value="'+(v||'')+'" inputmode="decimal"></div>'+
-    '<div class="fld" style="margin-top:10px"><label class="lbl">Note</label>'+
-      '<textarea class="inp" id="nt-texte" rows="3" style="font-family:var(--syne);font-size:14px;white-space:normal" '+
-      'placeholder="Paiement partiel de 300 $, doit payer le reste le 15.">'+esc(nt)+'</textarea></div>'+
+    '<div class="modal" style="max-width:600px" role="dialog" aria-modal="true">'+
+    '<h4>'+esc(MOIS_LONGS[mois-1])+' — logement '+esc(l.numero)+'</h4>'+
+    '<div class="qui">'+esc(l.locataire||'—')+' · loyer attendu '+fmt(attendu)+' $'+
+      (reste>0.005?' · <b style="color:var(--red)">reste '+fmt(reste)+' $</b>'
+                  :(reste<-0.005?' · <b style="color:var(--green)">surplus '+fmt(-reste)+' $</b>':' · <b style="color:var(--green)">payé au complet</b>'))+
+    '</div>'+
+    (vs.length?'<div class="vers-liste" id="vers-liste">'+lignes+
+      '<div class="vers-tot"><span>Total du mois</span><span>'+fmt(total)+' $</span></div></div>'
+     :'<div class="empty" style="padding:18px">Aucun versement pour ce mois.</div>')+
+    '<div class="addgrid" style="grid-template-columns:132px 100px 1fr auto;gap:8px">'+
+      '<div class="fld"><label class="lbl">Date</label><input class="inp" id="nv-date" type="date" value="'+
+        esc(ANNEE+'-'+String(mois).padStart(2,'0')+'-01')+'"></div>'+
+      '<div class="fld"><label class="lbl">Montant</label><input class="inp" id="nv-montant" inputmode="decimal" placeholder="'+
+        (reste>0.005?Math.round(reste):'')+'"></div>'+
+      '<div class="fld"><label class="lbl">Note</label><input class="inp" id="nv-note" placeholder="Doit payer le reste le 15"></div>'+
+      '<div class="fld"><label class="lbl">&nbsp;</label><button class="btn btn-g" onclick="ajouterVersement()">Ajouter</button></div>'+
+    '</div>'+
     '<div class="modal-act">'+
-      (nt?'<button class="btn btn-r" onclick="effacerNote(\''+logementId+'\','+mois+')">Effacer la note</button>':'')+
-      '<button class="btn" onclick="fermerNote()">Annuler</button>'+
-      '<button class="btn btn-g" onclick="enregistrerNote(\''+logementId+'\','+mois+')">Enregistrer</button>'+
+      '<button class="btn" onclick="fermerNote()">Fermer</button>'+
+      (vs.length?'<button class="btn btn-p" onclick="enregistrerVersements()">Enregistrer les modifications</button>':'')+
     '</div></div></div>';
-  setTimeout(function(){ var t=document.getElementById('nt-texte'); if(t) t.focus(); },40);
+  setTimeout(function(){ var t=document.getElementById('nv-montant'); if(t) t.focus(); },40);
 }
-function fermerNote(){ document.getElementById('note-modal').innerHTML=''; }
 
-async function enregistrerNote(logementId,mois){
-  var mt=document.getElementById('nt-montant').value.trim();
-  var nt=document.getElementById('nt-texte').value.trim();
+function fermerNote(){ document.getElementById('note-modal').innerHTML=''; FICHE=null; }
+
+async function rafraichirFiche(){
+  chargé.db=0; chargé.rp=0;
+  var f=FICHE;
+  await chargerPerception();
+  if(f) ouvrirNote(f.logementId,f.mois);
+}
+
+async function ajouterVersement(){
+  if(!FICHE) return;
+  var mt=document.getElementById('nv-montant').value.trim();
+  var nt=document.getElementById('nv-note').value.trim();
+  var dt=document.getElementById('nv-date').value;
+  if(!mt && !nt){ document.getElementById('nv-montant').style.borderColor='var(--red)'; return; }
   try{
-    await gsApi({action:'setPerception',logementId:logementId,annee:ANNEE,mois:mois,montant:mt,note:nt});
+    await gsApi({action:'ajouterVersement',logementId:FICHE.logementId,annee:ANNEE,mois:FICHE.mois,
+      date:dt,montant:mt,note:nt});
+    await rafraichirFiche();
+  }catch(e){}
+}
+
+/* Enregistre en une passe toutes les lignes modifiées de la fiche. */
+async function enregistrerVersements(){
+  var lignes=[].slice.call(document.querySelectorAll('#vers-liste .vers-l'));
+  try{
+    for(var i=0;i<lignes.length;i++){
+      var d=lignes[i];
+      await gsApi({action:'modifierVersement',id:d.dataset.id,
+        date:d.querySelector('input[type=date]').value,
+        montant:d.querySelector('.vm').value.trim(),
+        note:d.querySelector('.vn').value.trim()});
+    }
     fermerNote();
     chargé.db=0; chargé.rp=0;
     await chargerPerception();
   }catch(e){}
 }
-async function effacerNote(logementId,mois){
+
+async function supprimerVersement(id){
+  if(!confirm('Supprimer ce versement ?')) return;
   try{
-    var mt=document.getElementById('nt-montant').value.trim();
-    await gsApi({action:'setPerception',logementId:logementId,annee:ANNEE,mois:mois,montant:mt,note:''});
-    fermerNote();
-    await chargerPerception();
+    await gsApi({action:'supprimerVersement',id:id});
+    await rafraichirFiche();
   }catch(e){}
 }
 
