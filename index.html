@@ -152,6 +152,8 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
 .chart .bar-d{fill:var(--red)}
 .chart .bar-r:hover,.chart .bar-d:hover{opacity:.75}
 .chart-leg{display:flex;gap:18px;justify-content:center;margin-top:10px;font-size:12px;color:var(--muted)}
+.lien-doc{font-size:11.5px;color:var(--green);text-decoration:none;border-bottom:1px solid var(--green-bd)}
+.lien-doc:hover{border-bottom-color:var(--green)}
 .sel-f{font-family:var(--syne);font-size:13px;background:var(--s1);border:1px solid var(--border);
   border-radius:6px;color:var(--text);padding:8px 10px}
 .sel-f:focus{outline:none;border-color:var(--green)}
@@ -431,6 +433,11 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
     accepté, soit un bail signé avec le locataire. La colonne Document le signale, et les baux
     sans pièce justificative sont marqués — c'est une lacune au dossier, gênante devant le
     Tribunal administratif du logement.<br><br>
+    <b>Pièce jointe.</b> Le bouton 📎 permet de joindre une photo ou un PDF du bail signé.
+    Les photos sont réduites à 1600 px avant l'envoi, ce qui reste très lisible. Les fichiers
+    vont dans un dossier <b>MDImmo — documents</b> de ton Drive, <b>non partagé</b> : ils
+    contiennent des renseignements personnels de tes locataires. Une seule pièce par bail —
+    en joindre une nouvelle remplace l'ancienne, qui part à la corbeille.<br><br>
     Au Québec, aucun dépôt de garantie ne peut être exigé — c'est pourquoi ce champ n'existe pas.
     Les baux se chevauchant sur un même logement sont refusés : ils rendraient impossible de
     savoir qui occupait les lieux à une date donnée.
@@ -1136,24 +1143,88 @@ let BAUX=[];
 /* Document justificatif d'un bail : avis de renouvellement accepté, ou bail
    signé. Un bail en vigueur sans document est une lacune au dossier. */
 function rendreDocument(b){
+  var h='';
   if(b.document&&b.document.type==='renouvellement'){
-    return '<span class="bdg '+(b.document.refuse?'bdg-warn':'bdg-ok')+'">'+esc(b.document.libelle)+'</span>'+
+    h+='<span class="bdg '+(b.document.refuse?'bdg-warn':'bdg-ok')+'">'+esc(b.document.libelle)+'</span>'+
       (b.avis?'<div class="sub" style="margin-top:3px">'+fmt(b.avis.loyerActuel)+' → '+fmt(b.avis.loyerNouveau)+' $'+
         (b.avis.dateEnvoi?'<br>remis le '+dfr(b.avis.dateEnvoi):'')+
-        (b.avis.dateReponse?'<br>accepté le '+dfr(b.avis.dateReponse):'')+'</div>':'');
-  }
-  if(b.document&&b.document.type==='bail'){
-    return '<span class="bdg bdg-ok">Bail signé</span>'+
-      (b.document.date?'<div class="sub" style="margin-top:3px">le '+dfr(b.document.date)+'</div>':'')+
-      '<div style="margin-top:4px"><button class="btn" style="padding:2px 7px;font-size:10px" '+
-      'onclick="retirerDocument(\''+esc(b.id)+'\')">Retirer</button></div>';
-  }
-  if(b.documentManquant){
-    return '<span class="bdg bdg-bad">Aucun document</span>'+
+        (b.avis.dateReponse?'<br>'+(b.document.refuse?'refusé':'accepté')+' le '+dfr(b.avis.dateReponse):'')+'</div>':'');
+  }else if(b.document&&b.document.type==='bail'){
+    h+='<span class="bdg bdg-ok">Bail signé</span>'+
+      (b.document.date?'<div class="sub" style="margin-top:3px">le '+dfr(b.document.date)+'</div>':'');
+  }else if(b.documentManquant){
+    h+='<span class="bdg bdg-bad">Aucun document</span>'+
       '<div style="margin-top:4px"><button class="btn" style="padding:2px 7px;font-size:10px" '+
       'onclick="signerBail(\''+esc(b.id)+'\')">Bail signé…</button></div>';
+  }else{
+    h+='<span class="sub">—</span>';
   }
-  return '<span class="sub">—</span>';
+  // Pièce jointe : photo ou numérisation du bail signé
+  if(b.docUrl){
+    h+='<div style="margin-top:5px"><a class="lien-doc" href="'+esc(b.docUrl)+'" target="_blank" rel="noopener">'+
+       '📎 '+esc((b.docNom||'Pièce jointe').slice(0,34))+'</a>'+
+       ' <button class="btn" style="padding:1px 6px;font-size:10px" onclick="retirerPiece(\''+esc(b.id)+'\')">✕</button></div>';
+  }else{
+    h+='<div style="margin-top:5px"><button class="btn" style="padding:2px 7px;font-size:10px" '+
+       'onclick="choisirPiece(\''+esc(b.id)+'\')">📎 Joindre le bail…</button></div>';
+  }
+  return h;
+}
+
+/* Téléversement d'une pièce. Les photos sont réduites côté navigateur : une
+   photo de téléphone fait 4 à 8 Mo, illisible à téléverser dans une requête
+   Apps Script, et 1600 px suffisent amplement à lire un bail. */
+function choisirPiece(bailId){
+  var inp=document.createElement('input');
+  inp.type='file';
+  inp.accept='image/*,application/pdf';
+  inp.onchange=function(){ if(inp.files&&inp.files[0]) televerserPiece(bailId,inp.files[0]); };
+  inp.click();
+}
+
+function reduireImage(file,maxPx){
+  return new Promise(function(res,rej){
+    var img=new Image(), url=URL.createObjectURL(file);
+    img.onload=function(){
+      var r=Math.min(1,maxPx/Math.max(img.width,img.height));
+      var c=document.createElement('canvas');
+      c.width=Math.round(img.width*r); c.height=Math.round(img.height*r);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);
+      res({donnees:c.toDataURL('image/jpeg',0.85).split(',')[1], mimeType:'image/jpeg', nom:'photo.jpg'});
+    };
+    img.onerror=function(){ URL.revokeObjectURL(url); rej(new Error('Image illisible')); };
+    img.src=url;
+  });
+}
+
+function lireFichier(file){
+  return new Promise(function(res,rej){
+    var r=new FileReader();
+    r.onload=function(){ res({donnees:String(r.result).split(',')[1], mimeType:file.type, nom:file.name}); };
+    r.onerror=function(){ rej(new Error('Lecture impossible')); };
+    r.readAsDataURL(file);
+  });
+}
+
+async function televerserPiece(bailId,file){
+  try{
+    setStatus(null,'Téléversement…');
+    var p = /^image\//.test(file.type) ? await reduireImage(file,1600) : await lireFichier(file);
+    if(p.donnees.length*3/4 > 8*1024*1024){
+      setStatus(false,'⚠ Fichier trop lourd (max 8 Mo)'); return;
+    }
+    await gsApiPost({action:'televerserDoc',id:bailId,nomFichier:p.nom,mimeType:p.mimeType,donnees:p.donnees});
+    BAUX=[]; await chargerBaux();
+  }catch(e){ setStatus(false,'⚠ '+e.message); }
+}
+
+async function retirerPiece(bailId){
+  if(!confirm('Retirer cette pièce jointe ?\n\nLe fichier sera mis à la corbeille de ton Drive.')) return;
+  try{
+    await gsApi({action:'retirerFichierDoc',id:bailId});
+    BAUX=[]; await chargerBaux();
+  }catch(e){}
 }
 
 async function signerBail(id){
