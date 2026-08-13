@@ -152,6 +152,9 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
 .chart .bar-d{fill:var(--red)}
 .chart .bar-r:hover,.chart .bar-d:hover{opacity:.75}
 .chart-leg{display:flex;gap:18px;justify-content:center;margin-top:10px;font-size:12px;color:var(--muted)}
+.sel-f{font-family:var(--syne);font-size:13px;background:var(--s1);border:1px solid var(--border);
+  border-radius:6px;color:var(--text);padding:8px 10px}
+.sel-f:focus{outline:none;border-color:var(--green)}
 .lg-ex{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:3px;
   border:1px solid transparent;vertical-align:1px;margin:0 2px}
 .chart-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
@@ -389,7 +392,13 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
 <section id="tab-baux" class="hidden">
   <div class="sec">
     <span>Baux</span>
-    <div class="sec-actions"><button class="btn btn-p" onclick="nouveauBail()">+ Nouveau bail</button></div>
+    <div class="sec-actions">
+      <select class="sel-f" id="b-periode" onchange="chargerBaux()" aria-label="Filtrer par période de bail">
+        <option value="">Toutes les périodes</option>
+        <option value="_actifs">Baux en cours</option>
+      </select>
+      <button class="btn btn-p" onclick="nouveauBail()">+ Nouveau bail</button>
+    </div>
   </div>
 
   <div class="addcard hidden" id="bail-form">
@@ -614,6 +623,7 @@ function changerAnnee(){
 }
 function changerImmeuble(){
   IMM=document.getElementById('sel-imm').value;
+  BAUX=[];
   Object.keys(chargé).forEach(function(k){ delete chargé[k]; });
   showTab(document.querySelector('.nav-tab.active').dataset.tab);
 }
@@ -1062,7 +1072,8 @@ async function chargerImmeubles(){
         '<b style="font-size:15px;font-family:var(--serif)">'+esc(i.nom)+'</b>'+
         '<span class="sub">'+esc(i.adresse||'')+', '+esc(i.ville||'')+'</span>'+
         '<span class="sub" style="margin-left:auto">Dépôt '+fmt0(s1)+' $ → '+fmt0(s2)+' $ / mois</span></div>'+
-        '<div class="tbl-wrap"><table><thead><tr><th>Logement</th><th>Locataire</th>'+
+        '<div class="tbl-wrap"><table><thead><tr><th>Logement</th>'+
+        '<th>Locataire en '+ANNEE+'</th>'+
         '<th class="num">Loyer janv–juin</th><th class="num">Loyer juil–déc</th><th class="num">Écart</th></tr></thead><tbody>';
       ls.forEach(function(l){
         var ec=l.loyerS2-l.loyerS1;
@@ -1095,15 +1106,57 @@ async function majLoyer(logementId,semestre,el){
    au 30 juin, deux baux successifs cohabitent dans une même année civile. */
 let BAUX=[];
 
+/* Étiquette lisible d'une période de bail : « Juillet 2025 → Juin 2026 ». */
+function libellePeriode(d1,d2){
+  var mo=['janv.','févr.','mars','avr.','mai','juin','juill.','août','sept.','oct.','nov.','déc.'];
+  var f=function(iso){
+    if(!iso) return '?';
+    var p=String(iso).slice(0,10).split('-');
+    return mo[Number(p[1])-1]+' '+p[0];
+  };
+  return f(d1)+' → '+f(d2);
+}
+
+/* Remplit la liste des périodes à partir des baux réellement présents,
+   en conservant le choix courant. */
+function remplirPeriodes(){
+  var sel=document.getElementById('b-periode');
+  var choix=sel.value;
+  var vues={}, ordre=[];
+  BAUX.forEach(function(b){
+    var cle=(b.dateDebut||'')+'|'+(b.dateFin||'');
+    if(!vues[cle]){ vues[cle]=libellePeriode(b.dateDebut,b.dateFin); ordre.push(cle); }
+  });
+  ordre.sort(function(a,b){ return b.localeCompare(a); });   // la plus récente en tête
+  sel.innerHTML='<option value="">Toutes les périodes</option>'+
+    '<option value="_actifs">Baux en cours</option>'+
+    ordre.map(function(c){ return '<option value="'+esc(c)+'">'+esc(vues[c])+'</option>'; }).join('');
+  if(choix) sel.value=choix;
+}
+
 async function chargerBaux(){
   var tb=document.getElementById('baux-body');
   try{
-    var d=await gsApi({action:'getBaux'});
-    BAUX=d.baux;
+    if(!BAUX.length){
+      var d=await gsApi({action:'getBaux'});
+      BAUX=d.baux;
+    }
     remplirSelectLogements();
-    var ls=BAUX.filter(function(b){ return !IMM || b.immeubleId===IMM; });
-    if(!ls.length){ tb.innerHTML='<tr><td colspan="6" class="empty">Aucun bail.</td></tr>'; return; }
+    remplirPeriodes();
+
     var auj=new Date().toISOString().slice(0,10);
+    var per=document.getElementById('b-periode').value;
+    var ls=BAUX.filter(function(b){ return !IMM || b.immeubleId===IMM; })
+      .filter(function(b){
+        if(!per) return true;
+        if(per==='_actifs') return (!b.dateDebut||b.dateDebut<=auj)&&(!b.dateFin||b.dateFin>=auj);
+        return ((b.dateDebut||'')+'|'+(b.dateFin||''))===per;
+      });
+
+    if(!ls.length){
+      tb.innerHTML='<tr><td colspan="6" class="empty">Aucun bail pour ce filtre.</td></tr>';
+      return;
+    }
     tb.innerHTML='';
     ls.forEach(function(b){
       var actif=(!b.dateDebut||b.dateDebut<=auj)&&(!b.dateFin||b.dateFin>=auj);
@@ -1195,6 +1248,7 @@ async function enregistrerBail(){
     fermerBail();
     REF=await gsApi({action:'getReferentiels'});
     chargé.pc=0; chargé.im=0; chargé.av=0;
+    BAUX=[];                       /* force la relecture depuis le classeur */
     await chargerBaux();
   }catch(e){}
 }
@@ -1205,6 +1259,7 @@ async function supprimerBail(id){
   try{
     await gsApi({action:'supprimerBail',id:id});
     chargé.pc=0; chargé.im=0; chargé.av=0;
+    BAUX=[];
     await chargerBaux();
   }catch(e){}
 }
