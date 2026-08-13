@@ -387,14 +387,40 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
 
 <!-- ====== BAUX ====== -->
 <section id="tab-baux" class="hidden">
-  <div class="sec"><span>Baux</span></div>
+  <div class="sec">
+    <span>Baux</span>
+    <div class="sec-actions"><button class="btn btn-p" onclick="nouveauBail()">+ Nouveau bail</button></div>
+  </div>
+
+  <div class="addcard hidden" id="bail-form">
+    <div class="addgrid">
+      <div class="fld"><label class="lbl">Logement</label><select class="inp" id="b-log"></select></div>
+      <div class="fld"><label class="lbl">Locataire</label><input class="inp" id="b-nom" placeholder="Prénom Nom"></div>
+      <div class="fld"><label class="lbl">Début du bail</label><input class="inp" id="b-d1" type="date"></div>
+      <div class="fld"><label class="lbl">Fin du bail</label><input class="inp" id="b-d2" type="date"></div>
+      <div class="fld"><label class="lbl">Téléphone</label><input class="inp" id="b-tel"></div>
+      <div class="fld"><label class="lbl">Courriel</label><input class="inp" id="b-mail" type="email"></div>
+      <div class="fld" style="grid-column:1/-1"><label class="lbl">Notes</label><input class="inp" id="b-notes"></div>
+      <div class="fld"><button class="btn btn-g" id="b-ok" onclick="enregistrerBail()">Enregistrer</button></div>
+      <div class="fld"><button class="btn" onclick="fermerBail()">Annuler</button></div>
+    </div>
+    <input type="hidden" id="b-id">
+    <div class="note" style="margin-top:12px">
+      Un bail court du <b>1<sup>er</sup> juillet au 30 juin</b>. Pour un changement de locataire,
+      ne modifie pas le bail existant : termine-le au 30 juin et crée un nouveau bail à partir
+      du 1<sup>er</sup> juillet. C'est ce qui permet à l'historique de rester juste — la grille
+      de perception affichera l'ancien locataire de janvier à juin et le nouveau de juillet à décembre.
+    </div>
+  </div>
+
   <div class="tbl-wrap"><table>
-    <thead><tr><th>Locataire</th><th>Logement</th><th class="num">Loyer janv–juin</th><th class="num">Loyer juil–déc</th><th>Période</th><th>Notes</th></tr></thead>
+    <thead><tr><th>Logement</th><th>Locataire</th><th>Période</th><th>Coordonnées</th><th>Notes</th><th></th></tr></thead>
     <tbody id="baux-body"><tr><td colspan="6" class="empty">Chargement…</td></tr></tbody>
   </table></div>
   <div class="note">
     Au Québec, aucun dépôt de garantie ne peut être exigé — c'est pourquoi ce champ n'existe pas.
-    Les téléphones et courriels se saisissent dans la feuille <b>Baux</b> du classeur.
+    Les baux se chevauchant sur un même logement sont refusés : ils rendraient impossible de
+    savoir qui occupait les lieux à une date donnée.
   </div>
 </section>
 
@@ -741,7 +767,7 @@ async function chargerPerception(){
             '</td>');
         }
         tr.innerHTML='<td class="sticky1"><b>'+esc(l.numero)+'</b> <span class="sub">'+fmt0(loyer)+' $</span>'+
-          '<div class="sub">'+esc(l.immeuble)+' · '+esc(l.locataire||'—')+'</div></td>'+
+          '<div class="sub">'+esc(l.immeuble)+' · '+esc((sem===1?l.locataireS1:l.locataireS2)||'—')+'</div></td>'+
           cells.join('')+
           '<td class="num"><span class="bdg '+(solde>0.5?'bdg-bad':'bdg-ok')+'">'+
           (solde>0.5?'('+fmt0(solde)+' $)':fmt0(-solde)+' $')+'</span></td>';
@@ -791,6 +817,7 @@ function ouvrirNote(logementId,mois){
   FICHE={logementId:logementId,mois:mois};
   var vs=((l.versements||[])[mois-1]||[]).slice();
   var attendu=(mois<=6)?l.loyerS1:l.loyerS2;
+  var qui=(mois<=6?l.locataireS1:l.locataireS2)||'—';
   var total=vs.reduce(function(a,v){return a+Number(v.montant||0);},0);
   var reste=attendu-total;
 
@@ -807,7 +834,7 @@ function ouvrirNote(logementId,mois){
     '<div class="voile" onclick="if(event.target===this)fermerNote()">'+
     '<div class="modal" style="max-width:600px" role="dialog" aria-modal="true">'+
     '<h4>'+esc(MOIS_LONGS[mois-1])+' — logement '+esc(l.numero)+'</h4>'+
-    '<div class="qui">'+esc(l.locataire||'—')+' · loyer attendu '+fmt(attendu)+' $'+
+    '<div class="qui">'+esc(qui)+' · loyer attendu '+fmt(attendu)+' $'+
       (reste>0.005?' · <b style="color:var(--red)">reste '+fmt(reste)+' $</b>'
                   :(reste<-0.005?' · <b style="color:var(--green)">surplus '+fmt(-reste)+' $</b>':' · <b style="color:var(--green)">payé au complet</b>'))+
     '</div>'+
@@ -1039,7 +1066,10 @@ async function chargerImmeubles(){
         '<th class="num">Loyer janv–juin</th><th class="num">Loyer juil–déc</th><th class="num">Écart</th></tr></thead><tbody>';
       ls.forEach(function(l){
         var ec=l.loyerS2-l.loyerS1;
-        html+='<tr><td><b>'+esc(l.numero)+'</b></td><td>'+esc(l.locataire||'—')+'</td>'+
+        var q1=l.locataireS1||'—', q2=l.locataireS2||'—';
+        var qui = (q1===q2) ? esc(q1)
+          : esc(q1)+' <span class="sub">(janv–juin)</span><div>'+esc(q2)+' <span class="sub">(juil–déc)</span></div>';
+        html+='<tr><td><b>'+esc(l.numero)+'</b></td><td style="white-space:normal">'+qui+'</td>'+
           '<td class="num"><input class="mini" value="'+(l.loyerS1||'')+'" onchange="majLoyer(\''+l.logementId+'\',1,this)"></td>'+
           '<td class="num"><input class="mini" value="'+(l.loyerS2||'')+'" onchange="majLoyer(\''+l.logementId+'\',2,this)"></td>'+
           '<td class="num '+cls(ec)+'">'+(ec?fmt0(ec)+' $ · '+(l.loyerS1?(ec/l.loyerS1*100).toFixed(1):'0')+' %':'—')+'</td></tr>';
@@ -1060,27 +1090,123 @@ async function majLoyer(logementId,semestre,el){
   }catch(e){ el.style.borderColor='var(--red)'; }
 }
 
-/* === BAUX === */
+/* === BAUX ===
+   Un bail = logement + locataire + période. Comme la période va du 1er juillet
+   au 30 juin, deux baux successifs cohabitent dans une même année civile. */
+let BAUX=[];
+
 async function chargerBaux(){
   var tb=document.getElementById('baux-body');
   try{
-    var g=await gsApi({action:'getPerception',annee:ANNEE});
-    var parLog={}; g.lignes.forEach(function(l){ parLog[l.logementId]=l; });
-    var ls=REF.baux.filter(function(b){ return !IMM || b.immeubleId===IMM; });
+    var d=await gsApi({action:'getBaux'});
+    BAUX=d.baux;
+    remplirSelectLogements();
+    var ls=BAUX.filter(function(b){ return !IMM || b.immeubleId===IMM; });
     if(!ls.length){ tb.innerHTML='<tr><td colspan="6" class="empty">Aucun bail.</td></tr>'; return; }
+    var auj=new Date().toISOString().slice(0,10);
     tb.innerHTML='';
     ls.forEach(function(b){
-      var l=parLog[b.logementId]||{};
+      var actif=(!b.dateDebut||b.dateDebut<=auj)&&(!b.dateFin||b.dateFin>=auj);
+      var futur=b.dateDebut&&b.dateDebut>auj;
+      var etat=actif?'<span class="bdg bdg-ok">En cours</span>'
+              :(futur?'<span class="bdg bdg-warn">À venir</span>'
+                     :'<span class="tag">Terminé</span>');
       var tr=document.createElement('tr');
-      tr.innerHTML='<td><b>'+esc(b.locataire)+'</b>'+
-        (b.telephone||b.courriel?'<div class="sub">'+esc([b.telephone,b.courriel].filter(Boolean).join(' · '))+'</div>':'')+'</td>'+
-        '<td>'+esc(nomImm(b.immeubleId))+' · '+esc(l.numero||'—')+'</td>'+
-        '<td class="num">'+fmt(l.loyerS1||0)+'</td><td class="num">'+fmt(l.loyerS2||0)+'</td>'+
+      tr.innerHTML='<td><b>'+esc(b.numero||'—')+'</b><div class="sub">'+esc(b.immeuble)+'</div></td>'+
+        '<td><b>'+esc(b.locataire)+'</b> '+etat+'</td>'+
         '<td>'+dfr(b.dateDebut)+' → '+dfr(b.dateFin)+'</td>'+
-        '<td style="white-space:normal;max-width:280px">'+esc(b.notes||'')+'</td>';
+        '<td class="sub">'+esc([b.telephone,b.courriel].filter(Boolean).join('<br>')||'—')+'</td>'+
+        '<td style="white-space:normal;max-width:240px" class="sub">'+esc(b.notes||'')+'</td>'+
+        '<td style="white-space:nowrap">'+
+          '<button class="btn" style="padding:3px 8px;font-size:11px" onclick="modifierBail(\''+esc(b.id)+'\')">Modifier</button> '+
+          '<button class="btn" style="padding:3px 7px;font-size:11px" onclick="supprimerBail(\''+esc(b.id)+'\')">✕</button>'+
+        '</td>';
       tb.appendChild(tr);
     });
   }catch(e){ tb.innerHTML='<tr><td colspan="6" class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+}
+
+function remplirSelectLogements(){
+  var sel=document.getElementById('b-log');
+  if(sel.options.length) return;
+  REF.immeubles.forEach(function(i){
+    var og=document.createElement('optgroup'); og.label=i.nom;
+    REF.logements.filter(function(l){ return l.immeubleId===i.id; }).forEach(function(l){
+      var o=document.createElement('option'); o.value=l.id; o.textContent=l.numero; og.appendChild(o);
+    });
+    sel.appendChild(og);
+  });
+}
+
+/* Propose par défaut la prochaine période de bail : 1er juillet au 30 juin. */
+function periodeParDefaut(){
+  var m=new Date().getMonth()+1, a=new Date().getFullYear();
+  var debut=(m>=7)?a:a-1;
+  return {d1:debut+'-07-01', d2:(debut+1)+'-06-30'};
+}
+
+function nouveauBail(){
+  var p=periodeParDefaut();
+  document.getElementById('b-id').value='';
+  document.getElementById('b-nom').value='';
+  document.getElementById('b-tel').value='';
+  document.getElementById('b-mail').value='';
+  document.getElementById('b-notes').value='';
+  document.getElementById('b-d1').value=p.d1;
+  document.getElementById('b-d2').value=p.d2;
+  document.getElementById('b-ok').textContent='Créer le bail';
+  document.getElementById('bail-form').classList.remove('hidden');
+  document.getElementById('b-nom').focus();
+}
+
+function modifierBail(id){
+  var b=BAUX.filter(function(x){ return x.id===id; })[0];
+  if(!b) return;
+  document.getElementById('b-id').value=b.id;
+  document.getElementById('b-log').value=b.logementId;
+  document.getElementById('b-nom').value=b.locataire;
+  document.getElementById('b-tel').value=b.telephone||'';
+  document.getElementById('b-mail').value=b.courriel||'';
+  document.getElementById('b-notes').value=b.notes||'';
+  document.getElementById('b-d1').value=(b.dateDebut||'').slice(0,10);
+  document.getElementById('b-d2').value=(b.dateFin||'').slice(0,10);
+  document.getElementById('b-ok').textContent='Enregistrer';
+  document.getElementById('bail-form').classList.remove('hidden');
+  document.getElementById('b-nom').focus();
+}
+
+function fermerBail(){ document.getElementById('bail-form').classList.add('hidden'); }
+
+async function enregistrerBail(){
+  var id=document.getElementById('b-id').value;
+  var champs={
+    logementId:document.getElementById('b-log').value,
+    locataire:document.getElementById('b-nom').value.trim(),
+    telephone:document.getElementById('b-tel').value.trim(),
+    courriel:document.getElementById('b-mail').value.trim(),
+    notes:document.getElementById('b-notes').value.trim(),
+    dateDebut:document.getElementById('b-d1').value,
+    dateFin:document.getElementById('b-d2').value
+  };
+  if(!champs.locataire){ document.getElementById('b-nom').style.borderColor='var(--red)'; return; }
+  try{
+    if(id) await gsApi(Object.assign({action:'modifierBail',id:id},champs));
+    else   await gsApi(Object.assign({action:'ajouterBail'},champs));
+    fermerBail();
+    REF=await gsApi({action:'getReferentiels'});
+    chargé.pc=0; chargé.im=0; chargé.av=0;
+    await chargerBaux();
+  }catch(e){}
+}
+
+async function supprimerBail(id){
+  var b=BAUX.filter(function(x){ return x.id===id; })[0];
+  if(!confirm('Supprimer le bail de '+(b?b.locataire:'ce locataire')+' ?\n\nL\'historique de perception reste intact, mais ce nom disparaîtra de la grille pour la période concernée.')) return;
+  try{
+    await gsApi({action:'supprimerBail',id:id});
+    chargé.pc=0; chargé.im=0; chargé.av=0;
+    await chargerBaux();
+  }catch(e){}
 }
 
 /* === AVIS D'AUGMENTATION === */
