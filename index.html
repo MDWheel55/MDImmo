@@ -423,10 +423,14 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
   </div>
 
   <div class="tbl-wrap"><table>
-    <thead><tr><th>Logement</th><th>Locataire</th><th>Période</th><th>Coordonnées</th><th>Notes</th><th></th></tr></thead>
-    <tbody id="baux-body"><tr><td colspan="6" class="empty">Chargement…</td></tr></tbody>
+    <thead><tr><th>Logement</th><th>Locataire</th><th>Période</th><th>Document</th><th>Coordonnées</th><th>Notes</th><th></th></tr></thead>
+    <tbody id="baux-body"><tr><td colspan="7" class="empty">Chargement…</td></tr></tbody>
   </table></div>
   <div class="note">
+    <b>Tout bail en vigueur doit reposer sur un document</b> : soit un avis de renouvellement
+    accepté, soit un bail signé avec le locataire. La colonne Document le signale, et les baux
+    sans pièce justificative sont marqués — c'est une lacune au dossier, gênante devant le
+    Tribunal administratif du logement.<br><br>
     Au Québec, aucun dépôt de garantie ne peut être exigé — c'est pourquoi ce champ n'existe pas.
     Les baux se chevauchant sur un même logement sont refusés : ils rendraient impossible de
     savoir qui occupait les lieux à une date donnée.
@@ -447,15 +451,26 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
     <div id="avis-delai"></div>
     <div class="tbl-wrap" style="margin-top:12px">
       <table>
-        <thead><tr><th></th><th>Logement</th><th>Locataire</th><th class="num">Loyer actuel</th><th class="num">Nouveau loyer</th><th class="num">Hausse</th></tr></thead>
-        <tbody id="avis-body"><tr><td colspan="6" class="empty">Chargement…</td></tr></tbody>
+        <thead><tr><th></th><th>Logement</th><th>Locataire</th>
+          <th class="num">Loyer actuel</th><th class="num">Nouveau loyer</th>
+          <th class="num">Hausse</th><th>État</th><th>Suivi</th></tr></thead>
+        <tbody id="avis-body"><tr><td colspan="8" class="empty">Chargement…</td></tr></tbody>
       </table>
     </div>
+
     <div class="note">
-      Le nouveau loyer se saisit dans l'onglet <b>Immeubles</b>, après avoir basculé l'année en
-      haut à droite. Note aussi que le modèle Excel d'origine renvoie encore à la « Régie du
-      logement » et au site rdl.gouv.qc.ca : l'organisme est le <b>Tribunal administratif du
-      logement</b> depuis 2020, site tal.gouv.qc.ca.
+      <b>Le nouveau loyer se saisit ici</b>, directement dans le tableau : le document du bas
+      s'ajuste aussitôt. Tant que l'avis n'est pas accepté, ce montant reste une proposition
+      et n'entre pas dans les loyers réels.<br><br>
+      <b>Le cycle.</b> Saisis le montant, imprime et remets l'avis, puis clique <b>Envoyé</b> —
+      la date est consignée, c'est elle qui fait courir le délai d'un mois dont dispose le
+      locataire pour répondre. À sa réponse, clique <b>Renouvelé</b> ou <b>Refusé</b>.<br><br>
+      <b>Au renouvellement</b>, le nouveau loyer est reporté dans la feuille Loyers pour la
+      période du 1<sup>er</sup> juillet au 30 juin, un bail est créé pour cette période, et
+      l'avis y reste rattaché : tu le retrouveras dans l'onglet Baux.<br><br>
+      <b>Au refus</b>, rien n'est appliqué. Le loyer demeure celui du bail en cours. Si tu
+      veux obtenir la hausse malgré tout, c'est à toi de saisir le Tribunal administratif du
+      logement dans le mois suivant le refus.
     </div>
   </div>
   <div id="avis-imprimes"></div>
@@ -827,7 +842,7 @@ function ouvrirNote(logementId,mois){
   FICHE={logementId:logementId,mois:mois};
   var vs=((l.versements||[])[mois-1]||[]).slice();
   var attendu=(mois<=6)?l.loyerS1:l.loyerS2;
-  var qui=(mois<=6?l.locataireS1:l.locataireS2)||'—';
+  var qui=(l.locatairesMois||[])[mois-1]||'—';
   var total=vs.reduce(function(a,v){return a+Number(v.montant||0);},0);
   var reste=attendu-total;
 
@@ -1057,6 +1072,20 @@ function exporterSommaire(){
 }
 
 /* === IMMEUBLES === */
+/* Occupation réelle d'un logement sur l'année, en segments de mois.
+   Un bail rompu en cours de semestre produit donc « janv–juill » puis
+   « août–déc » plutôt que le découpage figé janv–juin / juil–déc. */
+const MOIS_AB=['janv','févr','mars','avr','mai','juin','juill','août','sept','oct','nov','déc'];
+function rendreOccupants(segments){
+  if(!segments||!segments.length) return '<span class="sub">—</span>';
+  if(segments.length===1) return esc(segments[0].locataire);
+  return segments.map(function(sg){
+    var p=(sg.debut===sg.fin)?MOIS_AB[sg.debut-1]:MOIS_AB[sg.debut-1]+'–'+MOIS_AB[sg.fin-1];
+    return '<div>'+esc(sg.locataire)+' <span class="sub">('+p+')</span></div>';
+  }).join('');
+}
+
+
 async function chargerImmeubles(){
   var box=document.getElementById('imm-cartes');
   try{
@@ -1077,9 +1106,7 @@ async function chargerImmeubles(){
         '<th class="num">Loyer janv–juin</th><th class="num">Loyer juil–déc</th><th class="num">Écart</th></tr></thead><tbody>';
       ls.forEach(function(l){
         var ec=l.loyerS2-l.loyerS1;
-        var q1=l.locataireS1||'—', q2=l.locataireS2||'—';
-        var qui = (q1===q2) ? esc(q1)
-          : esc(q1)+' <span class="sub">(janv–juin)</span><div>'+esc(q2)+' <span class="sub">(juil–déc)</span></div>';
+        var qui=rendreOccupants(l.occupants);
         html+='<tr><td><b>'+esc(l.numero)+'</b></td><td style="white-space:normal">'+qui+'</td>'+
           '<td class="num"><input class="mini" value="'+(l.loyerS1||'')+'" onchange="majLoyer(\''+l.logementId+'\',1,this)"></td>'+
           '<td class="num"><input class="mini" value="'+(l.loyerS2||'')+'" onchange="majLoyer(\''+l.logementId+'\',2,this)"></td>'+
@@ -1105,6 +1132,46 @@ async function majLoyer(logementId,semestre,el){
    Un bail = logement + locataire + période. Comme la période va du 1er juillet
    au 30 juin, deux baux successifs cohabitent dans une même année civile. */
 let BAUX=[];
+
+/* Document justificatif d'un bail : avis de renouvellement accepté, ou bail
+   signé. Un bail en vigueur sans document est une lacune au dossier. */
+function rendreDocument(b){
+  if(b.document&&b.document.type==='renouvellement'){
+    return '<span class="bdg '+(b.document.refuse?'bdg-warn':'bdg-ok')+'">'+esc(b.document.libelle)+'</span>'+
+      (b.avis?'<div class="sub" style="margin-top:3px">'+fmt(b.avis.loyerActuel)+' → '+fmt(b.avis.loyerNouveau)+' $'+
+        (b.avis.dateEnvoi?'<br>remis le '+dfr(b.avis.dateEnvoi):'')+
+        (b.avis.dateReponse?'<br>accepté le '+dfr(b.avis.dateReponse):'')+'</div>':'');
+  }
+  if(b.document&&b.document.type==='bail'){
+    return '<span class="bdg bdg-ok">Bail signé</span>'+
+      (b.document.date?'<div class="sub" style="margin-top:3px">le '+dfr(b.document.date)+'</div>':'')+
+      '<div style="margin-top:4px"><button class="btn" style="padding:2px 7px;font-size:10px" '+
+      'onclick="retirerDocument(\''+esc(b.id)+'\')">Retirer</button></div>';
+  }
+  if(b.documentManquant){
+    return '<span class="bdg bdg-bad">Aucun document</span>'+
+      '<div style="margin-top:4px"><button class="btn" style="padding:2px 7px;font-size:10px" '+
+      'onclick="signerBail(\''+esc(b.id)+'\')">Bail signé…</button></div>';
+  }
+  return '<span class="sub">—</span>';
+}
+
+async function signerBail(id){
+  var d=prompt('Date de signature du bail (AAAA-MM-JJ) :', new Date().toISOString().slice(0,10));
+  if(!d) return;
+  try{
+    await gsApi({action:'setDocumentBail',id:id,typeDoc:'bail_signe',dateSignature:d});
+    BAUX=[]; await chargerBaux();
+  }catch(e){}
+}
+
+async function retirerDocument(id){
+  if(!confirm('Retirer la mention de bail signé ?')) return;
+  try{
+    await gsApi({action:'setDocumentBail',id:id,typeDoc:''});
+    BAUX=[]; await chargerBaux();
+  }catch(e){}
+}
 
 /* Étiquette lisible d'une période de bail : « Juillet 2025 → Juin 2026 ». */
 function libellePeriode(d1,d2){
@@ -1154,7 +1221,7 @@ async function chargerBaux(){
       });
 
     if(!ls.length){
-      tb.innerHTML='<tr><td colspan="6" class="empty">Aucun bail pour ce filtre.</td></tr>';
+      tb.innerHTML='<tr><td colspan="7" class="empty">Aucun bail pour ce filtre.</td></tr>';
       return;
     }
     tb.innerHTML='';
@@ -1168,15 +1235,16 @@ async function chargerBaux(){
       tr.innerHTML='<td><b>'+esc(b.numero||'—')+'</b><div class="sub">'+esc(b.immeuble)+'</div></td>'+
         '<td><b>'+esc(b.locataire)+'</b> '+etat+'</td>'+
         '<td>'+dfr(b.dateDebut)+' → '+dfr(b.dateFin)+'</td>'+
-        '<td class="sub">'+esc([b.telephone,b.courriel].filter(Boolean).join('<br>')||'—')+'</td>'+
-        '<td style="white-space:normal;max-width:240px" class="sub">'+esc(b.notes||'')+'</td>'+
+        '<td style="white-space:normal;max-width:210px">'+rendreDocument(b)+'</td>'+
+        '<td class="sub">'+esc([b.telephone,b.courriel].filter(Boolean).join(' · ')||'—')+'</td>'+
+        '<td style="white-space:normal;max-width:220px" class="sub">'+esc(b.notes||'')+'</td>'+
         '<td style="white-space:nowrap">'+
           '<button class="btn" style="padding:3px 8px;font-size:11px" onclick="modifierBail(\''+esc(b.id)+'\')">Modifier</button> '+
           '<button class="btn" style="padding:3px 7px;font-size:11px" onclick="supprimerBail(\''+esc(b.id)+'\')">✕</button>'+
         '</td>';
       tb.appendChild(tr);
     });
-  }catch(e){ tb.innerHTML='<tr><td colspan="6" class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+  }catch(e){ tb.innerHTML='<tr><td colspan="7" class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
 }
 
 function remplirSelectLogements(){
@@ -1264,7 +1332,17 @@ async function supprimerBail(id){
   }catch(e){}
 }
 
-/* === AVIS D'AUGMENTATION === */
+/* === AVIS D'AUGMENTATION ===
+   Cycle : brouillon -> envoyé -> renouvelé ou refusé. Le nouveau loyer se
+   saisit dans ce tableau et n'entre dans les loyers réels qu'au renouvellement. */
+const ETATS_AVIS={
+  brouillon:{t:'Brouillon',c:'tag'},
+  envoye:{t:'Envoyé',c:'bdg bdg-warn'},
+  renouvele:{t:'Renouvelé',c:'bdg bdg-ok'},
+  refuse:{t:'Hausse refusée',c:'bdg bdg-warn'},
+  demenage:{t:'Déménage',c:'bdg bdg-bad'}
+};
+
 async function chargerAvis(){
   var tb=document.getElementById('avis-body');
   try{
@@ -1277,19 +1355,110 @@ async function chargerAvis(){
           dfr(d.finBailCourant)+'. Pour un bail de 12 mois, l\'avis se donne de 3 à 6 mois avant '+
           'l\'échéance, soit entre le '+dfr(d.fenetre.du)+' et le '+dfr(d.fenetre.au)+'.')+'</div>';
 
+    if(AVIS.aRelouer&&AVIS.aRelouer.length){
+      document.getElementById('avis-delai').innerHTML+=
+        '<div class="note rouge"><b>'+AVIS.aRelouer.length+' logement(s) à relouer :</b> '+
+        esc(AVIS.aRelouer.map(function(x){return x.immeuble+' '+x.numero+' ('+x.locataire+')';}).join(', '))+
+        '. Le bail prend fin le '+dfr(AVIS.delai.finBailCourant)+
+        '. Crée le nouveau bail dans l\'onglet Baux une fois le prochain locataire trouvé, '+
+        'puis consigne la signature.</div>';
+    }
     var ls=AVIS.lignes.filter(function(l){ return !IMM || nomImm(IMM)===l.immeuble; });
     tb.innerHTML='';
     ls.forEach(function(l){
+      var e=ETATS_AVIS[l.statut]||ETATS_AVIS.brouillon;
+      var clos=(l.statut==='renouvele'||l.statut==='refuse');
+      var id=esc(l.logementId);
+
+      var actions='';
+      if(l.statut==='brouillon'){
+        actions='<button class="btn" style="padding:3px 9px;font-size:11px"'+(l.loyerNouveau?'':' disabled')+
+                ' onclick="marquerEnvoye(\''+id+'\')">Envoyé</button>';
+      }else if(l.statut==='envoye'){
+        actions='<button class="btn btn-g" style="padding:3px 9px;font-size:11px" onclick="repondreAvis(\''+id+'\',\'renouvele\')">Renouvelé</button> '+
+                '<button class="btn" style="padding:3px 9px;font-size:11px" onclick="repondreAvis(\''+id+'\',\'refuse\')">Hausse refusée</button> '+
+                '<button class="btn btn-r" style="padding:3px 9px;font-size:11px" onclick="repondreAvis(\''+id+'\',\'demenage\')">Déménage</button>';
+      }else{
+        actions='<button class="btn" style="padding:3px 8px;font-size:11px" onclick="reouvrirAvis(\''+id+'\')">Rouvrir</button>';
+      }
+
+      var suivi=[];
+      if(l.dateEnvoi)   suivi.push('remis le '+dfr(l.dateEnvoi));
+      if(l.dateReponse){
+        var verbe={renouvele:'accepté',refuse:'hausse refusée',demenage:'quitte le 30 juin'}[l.statut]||'répondu';
+        suivi.push(verbe+' le '+dfr(l.dateReponse));
+      }
+
       var tr=document.createElement('tr');
-      tr.innerHTML='<td><input type="checkbox" data-log="'+esc(l.logementId)+'" onchange="rendreAvis()"></td>'+
+      tr.innerHTML='<td><input type="checkbox" data-log="'+id+'" onchange="rendreAvis()"></td>'+
         '<td>'+esc(l.immeuble)+' · <b>'+esc(l.numero)+'</b></td><td>'+esc(l.locataire||'—')+'</td>'+
         '<td class="num">'+fmt(l.loyerActuel)+'</td>'+
-        '<td class="num">'+(l.loyerNouveau?fmt(l.loyerNouveau):'<span class="sub">à saisir</span>')+'</td>'+
-        '<td class="num '+cls(l.hausse)+'">'+(l.loyerNouveau?fmt(l.hausse)+' $ · '+l.haussePct+' %':'—')+'</td>';
+        '<td class="num">'+(clos
+            ? fmt(l.loyerNouveau)
+            : '<input class="mini" value="'+(l.loyerNouveau||'')+'" inputmode="decimal" '+
+              'placeholder="'+Math.round(l.loyerActuel)+'" aria-label="Nouveau loyer '+esc(l.numero)+'" '+
+              'onchange="majLoyerAvis(\''+id+'\',this)">')+'</td>'+
+        '<td class="num '+cls(l.hausse)+'">'+(l.loyerNouveau?fmt(l.hausse)+' $ · '+l.haussePct+' %':'—')+'</td>'+
+        '<td><span class="'+e.c+'">'+e.t+'</span></td>'+
+        '<td class="sub" style="white-space:normal">'+esc(suivi.join(' · '))+
+          '<div style="margin-top:4px">'+actions+'</div></td>';
       tb.appendChild(tr);
     });
     rendreAvis();
-  }catch(e){ tb.innerHTML='<tr><td colspan="6" class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+  }catch(e){ tb.innerHTML='<tr><td colspan="8" class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+}
+
+async function majLoyerAvis(logementId,el){
+  try{
+    await gsApi({action:'setAvis',logementId:logementId,annee:ANNEE,loyerNouveau:el.value.trim()});
+    await chargerAvis();
+  }catch(e){ el.style.borderColor='var(--red)'; }
+}
+
+async function marquerEnvoye(logementId){
+  var l=AVIS.lignes.filter(function(x){return x.logementId===logementId;})[0];
+  var d=prompt('Date de remise de l\'avis au locataire (AAAA-MM-JJ) :',
+               new Date().toISOString().slice(0,10));
+  if(!d) return;
+  try{
+    await gsApi({action:'avisEnvoye',logementId:logementId,annee:ANNEE,dateEnvoi:d});
+    await chargerAvis();
+  }catch(e){}
+}
+
+async function repondreAvis(logementId,reponse){
+  var l=AVIS.lignes.filter(function(x){return x.logementId===logementId;})[0];
+  var msg={
+    renouvele:'Confirmer le renouvellement du '+l.numero+' à '+fmt(l.loyerNouveau)+' $ ?\n\n'+
+      'Le nouveau loyer sera inscrit pour la période du '+dfr(AVIS.bail.debut)+' au '+
+      dfr(AVIS.bail.fin)+', et le bail de cette période sera créé.',
+    refuse:'Le locataire du '+l.numero+' refuse la hausse ?\n\n'+
+      'Attention : un refus ne met PAS fin au bail. Le locataire reste et le bail se '+
+      'reconduit à l\'ancien loyer de '+fmt(l.loyerActuel)+' $. Le bail de la période '+
+      'suivante sera donc créé.\n\n'+
+      'Pour obtenir la hausse, tu dois saisir le Tribunal administratif du logement '+
+      'dans le MOIS suivant le refus.',
+    demenage:'Le locataire du '+l.numero+' quitte à la fin du bail ?\n\n'+
+      'Le bail prendra fin le '+dfr(AVIS.delai.finBailCourant)+'. Aucun bail suivant ne sera '+
+      'créé : le logement passera à relouer, et tu devras signer un nouveau bail avec le '+
+      'prochain locataire.'
+  }[reponse];
+  if(!confirm(msg)) return;
+  var d=prompt('Date de la réponse du locataire (AAAA-MM-JJ) :', new Date().toISOString().slice(0,10));
+  if(!d) return;
+  try{
+    await gsApi({action:'avisReponse',logementId:logementId,annee:ANNEE,reponse:reponse,dateReponse:d});
+    BAUX=[]; chargé.bx=0; chargé.im=0; chargé.pc=0;
+    await chargerAvis();
+  }catch(e){}
+}
+
+async function reouvrirAvis(logementId){
+  if(!confirm('Rouvrir cet avis ?\n\nLe loyer déjà reporté n\'est pas défait : corrige-le dans l\'onglet Immeubles si nécessaire.')) return;
+  try{
+    await gsApi({action:'avisReouvrir',logementId:logementId,annee:ANNEE});
+    await chargerAvis();
+  }catch(e){}
 }
 
 function toutSelectionner(v){
@@ -1305,8 +1474,8 @@ function rendreAvis(){
   });
   var box=document.getElementById('avis-imprimes');
   var p=AVIS.proprietaire, b=AVIS.bail;
-  var jour=new Date().toISOString().slice(0,10);
   box.innerHTML=AVIS.lignes.filter(function(l){ return choisis[l.logementId]; }).map(function(l){
+    var jour=l.dateEnvoi||l.dateAvis||new Date().toISOString().slice(0,10);
     return '<div class="avis">'+
       '<h3>Avis d\'augmentation de loyer et de modification d\'une autre condition du bail</h3>'+
       '<div class="loi">(selon les articles 1942 et 1943 du Code civil du Québec)</div>'+
