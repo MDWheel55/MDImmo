@@ -244,7 +244,8 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
     <button class="nav-tab"        data-tab="imm"    onclick="showTab('imm')">Immeubles</button>
     <button class="nav-tab"        data-tab="baux"   onclick="showTab('baux')">Baux</button>
     <button class="nav-tab"        data-tab="avis"   onclick="showTab('avis')">Avis de loyer</button>
-    <button class="nav-tab"        data-tab="rap"    onclick="showTab('rap')">Rapports</button>
+    <button class="nav-tab"        data-tab="fin"    onclick="showTab('fin')">Financement</button>
+  <button class="nav-tab"        data-tab="rap"    onclick="showTab('rap')">Rapports</button>
     <button class="nav-tab"        data-tab="import" onclick="showTab('import')">Importer</button>
   </div>
 </nav>
@@ -356,9 +357,13 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
     </table>
   </div>
   <div class="note">
-    La <b>part locative</b> est la fraction déductible : <code>1</code> = tout, <code>0.6</code> = 60 %.
-    Elle s'applique avant la répartition. Voiture, cellulaire, assurance vie et prêt MAPA maison
-    ne sont déductibles qu'à hauteur de leur usage locatif réel.
+    La <b>part locative</b> est la fraction déductible : <code>1</code> = tout, <code>0.15</code> = 15 %.
+    Elle s'applique avant la répartition entre les immeubles.<br><br>
+    <b>Piège à éviter.</b> Saisis le montant <b>brut</b> et laisse la part faire la réduction —
+    jamais l'inverse. Un montant déjà réduit à la main auquel on applique encore la part
+    se trouve amputé deux fois. Si tu inscris une portion déjà calculée, mets la part à
+    <code>1</code>. Les imports appliquent automatiquement les parts réglées dans la feuille
+    <b>Reglages</b> : voiture 15 %, cellulaire 100 %, assurance vie 0 %.
   </div>
 </section>
 
@@ -483,6 +488,36 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
   <div id="avis-imprimes"></div>
 </section>
 
+<!-- ====== FINANCEMENT ====== -->
+<section id="tab-fin" class="hidden">
+  <div class="sec"><span>Financement — comptes de crédit</span></div>
+  <div class="grid4" id="fin-blocs"></div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Compte</th><th>Nom</th><th>Rattachement</th><th>Intérêts</th>
+      <th class="num">Solde</th><th class="num">Taux</th><th>Échéance</th></tr></thead>
+    <tbody id="fin-body"><tr><td colspan="7" class="empty">Chargement…</td></tr></tbody>
+  </table></div>
+
+  <div class="sec" style="margin-top:24px"><span>Intérêts portés en dépense</span></div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Immeuble</th><th class="num">Intérêts (T776 ligne 8710)</th></tr></thead>
+    <tbody id="fin-interets"></tbody>
+  </table></div>
+
+  <div class="note">
+    <b>Ce qui décide de la déduction, c'est l'usage des fonds empruntés — pas la garantie.</b>
+    Un prêt garanti par ta résidence dont l'argent a servi au parc locatif porte des intérêts
+    déductibles ; à l'inverse, une marge garantie par un immeuble locatif mais dépensée
+    personnellement ne l'est pas.<br><br>
+    C'est le principe de la <b>mise à part de l'argent</b>. L'Agence du revenu et Revenu Québec
+    l'admettent, mais exigent une <b>traçabilité rigoureuse</b> de l'emploi de chaque somme :
+    comptes distincts, relevés conservés, aucun mélange entre dépenses personnelles et locatives.
+    Fais valider ton montage par ton comptable — c'est le genre de structure qui se défend bien
+    quand elle est documentée et mal quand elle ne l'est pas.<br><br>
+    Le remboursement de <b>capital</b> n'est jamais déductible : seule la portion intérêt l'est.
+  </div>
+</section>
+
 <!-- ====== RAPPORT ====== -->
 <section id="tab-rap" class="hidden">
   <div class="sec noprint">
@@ -510,8 +545,10 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
   <div class="addcard">
     <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6">
       Une ligne par écriture, séparée par des points-virgules :<br>
-      <code style="font-family:var(--mono);font-size:11px;color:var(--text)">date;immeuble;poste;nature;description;fournisseur;montant</code><br>
+      <code style="font-family:var(--mono);font-size:11px;color:var(--text)">date;immeuble;poste;nature;description;fournisseur;montant;part</code><br>
       Immeuble vide ou « commun » pour une dépense à répartir. Nature : <code>courante</code> ou <code>capital</code>.
+      La 8<sup>e</sup> colonne <code>part</code> est facultative : elle force la part locative d'une ligne
+      (ex. <code>0,678</code>) quand la fraction déductible diffère du réglage habituel du poste.
     </p>
     <textarea class="inp" id="imp-txt" rows="8"
       placeholder="2026-09-03;Corsetière;Déneigement;courante;Contrat saison;Excavation Roy;1818,04"></textarea>
@@ -661,6 +698,7 @@ function showTab(tab){
   if(tab==='imm'   && !chargé.im) { chargerImmeubles();  chargé.im=1; }
   if(tab==='baux'  && !chargé.bx) { chargerBaux();       chargé.bx=1; }
   if(tab==='avis'  && !chargé.av) { chargerAvis();       chargé.av=1; }
+  if(tab==='fin'   && !chargé.fn) { chargerFinancement(); chargé.fn=1; }
   if(tab==='rap'   && !chargé.rp) { chargerRapport();    chargé.rp=1; }
 }
 
@@ -1579,6 +1617,60 @@ function rendreAvis(){
   }).join('');
 }
 
+/* === FINANCEMENT === */
+const USAGES={
+  immeuble:{t:'Immeuble',c:'bdg bdg-ok'},
+  commun:{t:'Parc locatif',c:'bdg bdg-ok'},
+  mise_a_part:{t:'Mise à part de l\'argent',c:'bdg bdg-warn'},
+  personnel:{t:'Personnel',c:'tag'}
+};
+const DEDUCT={
+  oui:{t:'Déductible',c:'bdg bdg-ok'},
+  non:{t:'Non déductible',c:'tag'},
+  a_valider:{t:'À valider',c:'bdg bdg-bad'}
+};
+
+async function chargerFinancement(){
+  var tb=document.getElementById('fin-body');
+  try{
+    var d=await gsApi({action:'getPrets',annee:ANNEE});
+    document.getElementById('fin-blocs').innerHTML=
+      blk('Intérêts déduits '+ANNEE,fmt(d.interetsTotal)+' $','T776 ligne 8710',true)+
+      blk('dont part commune',fmt(d.interetsCommuns)+' $','Répartie entre les immeubles')+
+      blk('Comptes de crédit',d.prets.length,'Prêts, marges et carte')+
+      blk('Rattachements à valider',d.aValider,d.aValider?'À trancher avec ton comptable':'Tout est tranché');
+
+    tb.innerHTML='';
+    d.prets.forEach(function(p){
+      var u=USAGES[p.usage]||{t:'Non précisé',c:'bdg bdg-bad'};
+      var dd=DEDUCT[p.deductible]||DEDUCT.a_valider;
+      var rat=p.immeuble?esc(p.immeuble):u.t;
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td class="num" style="text-align:left"><b>'+esc(p.numero||p.code)+'</b>'+
+          '<div class="sub">'+esc(p.institution)+'</div></td>'+
+        '<td style="white-space:normal;max-width:220px">'+esc(p.nom)+
+          (p.notes?'<div class="sub">'+esc(p.notes)+'</div>':'')+'</td>'+
+        '<td><span class="'+u.c+'">'+esc(rat)+'</span></td>'+
+        '<td><span class="'+dd.c+'">'+dd.t+'</span></td>'+
+        '<td class="num">'+(p.solde?fmt(p.solde):'<span class="sub">à saisir</span>')+'</td>'+
+        '<td class="num">'+(p.taux?esc(p.taux)+' %':'—')+'</td>'+
+        '<td>'+(p.echeance?dfr(p.echeance):'<span class="sub">—</span>')+'</td>';
+      tb.appendChild(tr);
+    });
+
+    var ti=document.getElementById('fin-interets');
+    ti.innerHTML='';
+    d.interetsParImmeuble.forEach(function(i){
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td>'+esc(i.nom)+'</td><td class="num neg">'+fmt(i.interets)+'</td>';
+      ti.appendChild(tr);
+    });
+    var tt=document.createElement('tr'); tt.className='tr-tot';
+    tt.innerHTML='<td>Total</td><td class="num neg">'+fmt(d.interetsTotal)+'</td>';
+    ti.appendChild(tt);
+  }catch(e){ tb.innerHTML='<tr><td colspan="7" class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+}
+
 /* === RAPPORT FISCAL === */
 async function chargerRapport(){
   var tb=document.getElementById('rap-body');
@@ -1622,25 +1714,37 @@ async function chargerRapport(){
 }
 
 /* === IMPORT DE JOURNAL === */
-async function importerJournal(){
+async function importerJournal(forcer){
   var txt=document.getElementById('imp-txt').value.trim();
   var res=document.getElementById('imp-res');
   if(!txt){ res.innerHTML='<div class="note">Colle d\'abord les lignes du journal.</div>'; return; }
   var lignes=txt.split('\n').map(function(l){return l.trim();}).filter(Boolean).map(function(l,i){
     var c=l.split(/[;\t]/).map(function(x){return x.trim().replace(/^"|"$/g,'');});
     if(i===0&&/^date$/i.test(c[0])) return null;
-    return { date:c[0], immeuble:c[1], poste:c[2], nature:c[3], description:c[4], fournisseur:c[5], montant:c[6] };
+    return { date:c[0], immeuble:c[1], poste:c[2], nature:c[3], description:c[4],
+             fournisseur:c[5], montant:c[6],
+             /* 8e colonne facultative : part locative, pour les lignes dont la
+                fraction déductible diffère du réglage habituel du poste. */
+             partLocative:(c[7]!==undefined&&c[7]!=='')?Number(String(c[7]).replace(',','.')):undefined };
   }).filter(Boolean);
 
   try{
-    var r=await gsApiPost({action:'importerJournal',lignes:lignes});
+    var r=await gsApiPost(Object.assign({action:'importerJournal',lignes:lignes},forcer?{forcer:true}:{}));
     var h='<div class="note"><b>'+r.propres+' dépenses</b> et <b>'+r.communes+' dépenses communes</b> ajoutées.</div>';
+    if(r.doublons&&r.doublons.length){
+      h+='<div class="note rouge"><b>'+r.doublons.length+' doublons écartés</b> — même date, même poste, '+
+        'même montant qu\'une écriture déjà présente. Rien n\'a été écrit pour celles-ci :<br>'+
+        r.doublons.map(function(x){ return 'ligne '+x.ligne+' : '+dfr(x.date)+' · '+esc(x.immeuble)+' · '+
+          esc(x.poste)+' · '+fmt(x.montant)+' $'; }).join('<br>')+
+        '<div style="margin-top:8px"><button class="btn btn-r" style="padding:3px 9px;font-size:11px" '+
+        'onclick="importerJournal(true)">Importer quand même</button></div></div>';
+    }
     if(r.rejets.length){
       h+='<div class="note rouge"><b>'+r.rejets.length+' lignes écartées</b> — rien n\'a été écrit pour celles-ci :<br>'+
         r.rejets.map(function(x){ return 'ligne '+x.ligne+' : '+esc(x.raison); }).join('<br>')+'</div>';
     }
     res.innerHTML=h;
-    document.getElementById('imp-txt').value='';
+    if(!r.doublons||!r.doublons.length) document.getElementById('imp-txt').value='';
     chargé.dp=0; chargé.db=0; chargé.sm=0; chargé.rp=0;
   }catch(e){ res.innerHTML='<div class="note rouge">Erreur : '+esc(e.message)+'</div>'; }
 }
