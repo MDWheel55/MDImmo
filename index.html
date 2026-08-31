@@ -1327,7 +1327,11 @@ async function chargerBaux(){
       .filter(function(b){
         if(!per) return true;
         if(per==='_actifs') return (!b.dateDebut||b.dateDebut<=auj)&&(!b.dateFin||b.dateFin>=auj);
-        return ((b.dateDebut||'')+'|'+(b.dateFin||''))===per;
+        if(((b.dateDebut||'')+'|'+(b.dateFin||''))===per) return true;
+        /* Chevauchement : un bail partiel (ex. 1er au 31 juillet) appartient
+           aussi à la période standard qui le contient. */
+        var pp=per.split('|');
+        return !!(pp[0]&&pp[1]&&b.dateDebut&&b.dateFin&&b.dateDebut<=pp[1]&&b.dateFin>=pp[0]);
       });
 
     if(!ls.length){
