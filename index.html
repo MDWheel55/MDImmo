@@ -571,7 +571,7 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxCIJ4kpPDhUvvC2hv6B
 let TOKEN = '';                       /* la clé viendra plus tard (CFG.AUTH = false) */
 
 let REF = { immeubles:[], logements:[], baux:[], postes:[], prets:[], reglages:{}, parts:{} };
-let ANNEE = 2025, IMM = '';
+let ANNEE = Number(localStorage.getItem('mdimmo.annee')) || 2025, IMM = '';
 let PERC = null, SOMM = null, AVIS = null;
 const chargé = {};
 
@@ -676,6 +676,7 @@ function majAnneeTexte(){
 }
 function changerAnnee(){
   ANNEE=Number(document.getElementById('sel-an').value);
+  localStorage.setItem('mdimmo.annee', ANNEE);
   majAnneeTexte();
   Object.keys(chargé).forEach(function(k){ delete chargé[k]; });
   showTab(document.querySelector('.nav-tab.active').dataset.tab);
@@ -945,7 +946,7 @@ async function ajouterVersement(){
     await gsApi({action:'ajouterVersement',logementId:FICHE.logementId,annee:ANNEE,mois:FICHE.mois,
       date:dt,montant:mt,note:nt});
     await rafraichirFiche();
-  }catch(e){}
+  }catch(e){ alert('⚠ Versement NON enregistré (année '+ANNEE+') : '+e.message); }
 }
 
 /* Enregistre en une passe toutes les lignes modifiées de la fiche. */
@@ -962,7 +963,7 @@ async function enregistrerVersements(){
     fermerNote();
     chargé.db=0; chargé.rp=0;
     await chargerPerception();
-  }catch(e){}
+  }catch(e){ alert('⚠ Modifications NON enregistrées : '+e.message+'\nLa fiche reste ouverte — réessaie.'); }
 }
 
 async function supprimerVersement(id){
@@ -970,7 +971,7 @@ async function supprimerVersement(id){
   try{
     await gsApi({action:'supprimerVersement',id:id});
     await rafraichirFiche();
-  }catch(e){}
+  }catch(e){ alert('⚠ Suppression NON effectuée : '+e.message); }
 }
 
 /* === DÉPENSES === */
@@ -1041,7 +1042,7 @@ async function ajouterDepense(){
     ['d-montant','d-desc','d-four'].forEach(function(id){ document.getElementById(id).value=''; });
     chargé.db=0; chargé.sm=0; chargé.rp=0;
     await chargerDepenses();
-  }catch(e){}
+  }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
 
 async function ajouterCommune(){
@@ -1056,7 +1057,7 @@ async function ajouterCommune(){
     ['c-montant','c-desc'].forEach(function(id){ document.getElementById(id).value=''; });
     chargé.db=0; chargé.sm=0; chargé.rp=0;
     await chargerDepenses();
-  }catch(e){}
+  }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
 
 async function supprimer(id,type){
@@ -1065,7 +1066,7 @@ async function supprimer(id,type){
     await gsApi({action:'supprimerDepense',id:id,type:type});
     chargé.db=0; chargé.sm=0; chargé.rp=0;
     await chargerDepenses();
-  }catch(e){}
+  }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
 
 /* === SOMMAIRE PAR POSTE === */
@@ -1262,7 +1263,7 @@ async function retirerPiece(bailId){
   try{
     await gsApi({action:'retirerFichierDoc',id:bailId});
     BAUX=[]; await chargerBaux();
-  }catch(e){}
+  }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
 
 async function signerBail(id){
@@ -1271,7 +1272,7 @@ async function signerBail(id){
   try{
     await gsApi({action:'setDocumentBail',id:id,typeDoc:'bail_signe',dateSignature:d});
     BAUX=[]; await chargerBaux();
-  }catch(e){}
+  }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
 
 async function retirerDocument(id){
@@ -1279,7 +1280,7 @@ async function retirerDocument(id){
   try{
     await gsApi({action:'setDocumentBail',id:id,typeDoc:''});
     BAUX=[]; await chargerBaux();
-  }catch(e){}
+  }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
 
 /* Étiquette lisible d'une période de bail : « Juillet 2025 → Juin 2026 ». */
@@ -1427,7 +1428,7 @@ async function enregistrerBail(){
     chargé.pc=0; chargé.im=0; chargé.av=0;
     BAUX=[];                       /* force la relecture depuis le classeur */
     await chargerBaux();
-  }catch(e){}
+  }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
 
 async function supprimerBail(id){
@@ -1438,7 +1439,7 @@ async function supprimerBail(id){
     chargé.pc=0; chargé.im=0; chargé.av=0;
     BAUX=[];
     await chargerBaux();
-  }catch(e){}
+  }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
 
 /* === AVIS D'AUGMENTATION ===
@@ -1532,7 +1533,7 @@ async function marquerEnvoye(logementId){
   try{
     await gsApi({action:'avisEnvoye',logementId:logementId,annee:ANNEE,dateEnvoi:d});
     await chargerAvis();
-  }catch(e){}
+  }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
 
 async function repondreAvis(logementId,reponse){
@@ -1559,7 +1560,7 @@ async function repondreAvis(logementId,reponse){
     await gsApi({action:'avisReponse',logementId:logementId,annee:ANNEE,reponse:reponse,dateReponse:d});
     BAUX=[]; chargé.bx=0; chargé.im=0; chargé.pc=0;
     await chargerAvis();
-  }catch(e){}
+  }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
 
 async function reouvrirAvis(logementId){
@@ -1567,7 +1568,7 @@ async function reouvrirAvis(logementId){
   try{
     await gsApi({action:'avisReouvrir',logementId:logementId,annee:ANNEE});
     await chargerAvis();
-  }catch(e){}
+  }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
 
 function toutSelectionner(v){
