@@ -141,7 +141,12 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
 
 
 /* Graphique mensuel — SVG maison, sans dépendance externe */
-.chart{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:18px}
+.chart{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:18px;position:relative}
+.chart-tip{position:absolute;pointer-events:none;background:var(--s1);border:1px solid var(--border);border-radius:6px;
+  padding:8px 10px;font-size:11px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.14);z-index:5;display:none;min-width:200px}
+.chart-tip b{font-family:var(--cond);font-size:12px;display:block;margin-bottom:4px}
+.chart-tip .tip-l{display:flex;justify-content:space-between;gap:14px}
+.chart-tip .tip-t{border-top:1px solid var(--border);margin-top:4px;padding-top:4px;font-weight:700}
 .chart h4{font-family:var(--cond);font-size:16px;font-weight:700;margin-bottom:12px}
 .chart svg{width:100%;height:auto;display:block;overflow:visible}
 .chart .axe{stroke:#E3E8E6;stroke-width:1;stroke-dasharray:2 4}
@@ -323,6 +328,13 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
       <div class="fld"><button class="btn btn-g" onclick="ajouterDepense()">Enregistrer</button></div>
     </div>
     <div id="d-hint" class="note hidden"></div>
+  </div>
+
+  <div class="addcard" id="dep-filtres" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+    <div class="fld"><label class="lbl">Immeuble</label><select class="inp" id="f-dimm" onchange="rendreDepenses()"><option value="">Tous</option></select></div>
+    <div class="fld"><label class="lbl">Mois</label><select class="inp" id="f-dmois" onchange="rendreDepenses()"><option value="">Tous</option></select></div>
+    <div class="fld"><label class="lbl">Poste</label><select class="inp" id="f-dposte" onchange="rendreDepenses()"><option value="">Tous</option></select></div>
+    <div class="fld"><button class="btn" onclick="viderFiltresDep()">Tout afficher</button></div>
   </div>
 
   <div class="tbl-wrap">
@@ -735,15 +747,64 @@ function dessinerGraphique(parMois){
     var hr=(m.revenus/haut)*iH, hd=(m.depenses/haut)*iH;
     if(m.revenus>0) g+='<rect class="bar-r" x="'+(cx-bw-1)+'" y="'+y(m.revenus)+'" width="'+bw+'" height="'+hr+'" rx="2">'+
       '<title>'+esc(m.mois)+' — loyers '+fmt(m.revenus)+' $</title></rect>';
-    if(m.depenses>0) g+='<rect class="bar-d" x="'+(cx+1)+'" y="'+y(m.depenses)+'" width="'+bw+'" height="'+hd+'" rx="2">'+
-      '<title>'+esc(m.mois)+' — dépenses '+fmt(m.depenses)+' $</title></rect>';
+    if(m.depenses>0) g+='<rect class="bar-d" data-mois="'+i+'" x="'+(cx+1)+'" y="'+y(m.depenses)+'" width="'+bw+'" height="'+hd+'" rx="2"></rect>';
     g+='<text class="lbl-x" x="'+cx+'" y="'+(H-mg.b+18)+'">'+esc(m.mois.slice(0,4))+'</text>';
   });
 
   return '<h4>Loyers encaissés et dépenses par mois</h4>'+
     '<svg viewBox="0 0 '+L+' '+H+'" role="img" aria-label="Loyers et dépenses par mois">'+g+'</svg>'+
+    '<div class="chart-tip" id="chart-tip"></div>'+
     '<div class="chart-leg"><span><i style="background:var(--green)"></i>Loyers</span>'+
     '<span><i style="background:var(--red)"></i>Dépenses</span></div>';
+}
+
+/* Détail des dépenses par mois pour l'infobulle du graphique : agrège
+   propres + communes (× part locative) par poste, à partir de getDepenses. */
+async function construireDetailMois(parMois){
+  var detail=null;
+  try{
+    var d=await gsApi({action:'getDepenses',annee:ANNEE});
+    detail=parMois.map(function(){ return {}; });
+    var ajouter=function(x,mt){
+      var i=Number(String(x.date).slice(5,7))-1;
+      if(i<0||i>=detail.length||!mt) return;
+      var n=nomPoste(x.posteId);
+      detail[i][n]=(detail[i][n]||0)+mt;
+    };
+    d.depenses.forEach(function(x){ ajouter(x,Number(x.montant)); });
+    d.communes.forEach(function(c){
+      var pl=(c.partLocative===''||c.partLocative==null)?1:Number(c.partLocative);
+      ajouter(c,Number(c.montant)*pl);
+    });
+  }catch(e){ /* sans détail, l'infobulle affichera le total seulement */ }
+
+  var tip=document.getElementById('chart-tip');
+  var svg=document.querySelector('#db-chart svg');
+  if(!tip||!svg) return;
+  svg.addEventListener('mousemove',function(ev){
+    var r=ev.target;
+    if(!r.classList||!r.classList.contains('bar-d')){ tip.style.display='none'; return; }
+    var i=Number(r.getAttribute('data-mois'));
+    var m=parMois[i]; if(!m){ tip.style.display='none'; return; }
+    var corps='';
+    if(detail&&detail[i]){
+      var lignes=Object.keys(detail[i]).map(function(n){ return [n,detail[i][n]]; })
+        .sort(function(a,b){ return b[1]-a[1]; });
+      var top=lignes.slice(0,8);
+      corps=top.map(function(l){
+        return '<div class="tip-l"><span>'+esc(l[0])+'</span><span>'+fmt(l[1])+' $</span></div>';
+      }).join('');
+      if(lignes.length>8) corps+='<div class="tip-l"><span>… et '+(lignes.length-8)+' autres postes</span><span></span></div>';
+    }
+    tip.innerHTML='<b>'+esc(m.mois)+'</b>'+corps+
+      '<div class="tip-l tip-t"><span>Total dépenses</span><span>'+fmt(m.depenses)+' $</span></div>';
+    var box=document.getElementById('db-chart').getBoundingClientRect();
+    tip.style.display='block';
+    var tx=ev.clientX-box.left+14, ty=ev.clientY-box.top-10;
+    if(tx+tip.offsetWidth>box.width-8) tx=ev.clientX-box.left-tip.offsetWidth-14;
+    tip.style.left=tx+'px'; tip.style.top=ty+'px';
+  });
+  svg.addEventListener('mouseleave',function(){ tip.style.display='none'; });
 }
 
 async function chargerDash(){
@@ -756,6 +817,7 @@ async function chargerDash(){
       blk('Loyers dus',fmt(d.montantDu)+' $','Cumul à ce jour')+
       blk('Additions au capital',fmt(d.capital)+' $','À amortir (DPA)');
     document.getElementById('db-chart').innerHTML=dessinerGraphique(d.parMois);
+    construireDetailMois(d.parMois);
 
     var tb=document.getElementById('db-body'); tb.innerHTML='';
     var lignes=d.parImmeuble.filter(function(i){ return !IMM || i.id===IMM; });
@@ -978,55 +1040,99 @@ async function supprimerVersement(id){
 function basculerFormDep(){ document.getElementById('dep-form').classList.toggle('hidden'); }
 function basculerFormCom(){ document.getElementById('com-form').classList.toggle('hidden'); }
 
+var DEPDATA=null;
+
 async function chargerDepenses(){
   var tb=document.getElementById('dep-body');
   try{
-    var d=await gsApi({action:'getDepenses',annee:ANNEE});
-    var ls=d.depenses.filter(function(x){ return !IMM || x.immeubleId===IMM; });
-    if(!ls.length) tb.innerHTML='<tr><td colspan="7" class="empty">Aucune dépense.</td></tr>';
-    else{
-      tb.innerHTML='';
-      ls.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
-      ls.forEach(function(x){
-        var tr=document.createElement('tr');
-        tr.innerHTML='<td>'+dfr(x.date)+'</td><td>'+esc(nomPoste(x.posteId))+'</td>'+
-          '<td>'+esc(nomImm(x.immeubleId))+'</td><td>'+esc(x.description||'')+'</td>'+
-          '<td><span class="tag">'+(x.nature==='capital'?'Capital':'Courante')+'</span></td>'+
-          '<td class="num neg">'+fmt(x.montant)+'</td>'+
-          '<td><button class="btn" style="padding:2px 6px;font-size:9px" onclick="supprimer(\''+esc(x.id)+'\',\'depense\')">✕</button></td>';
-        tb.appendChild(tr);
-      });
-      var tt=document.createElement('tr'); tt.className='tr-tot';
-      tt.innerHTML='<td colspan="5">Total</td><td class="num neg">'+
-        fmt(ls.reduce(function(a,x){return a+Number(x.montant);},0))+'</td><td></td>';
-      tb.appendChild(tt);
-    }
-
-    var imms=REF.immeubles;
-    document.getElementById('com-head').innerHTML='<tr><th>Date</th><th>Poste</th><th>Description</th>'+
-      '<th class="num">Montant</th><th class="num">Part loc.</th>'+
-      imms.map(function(i){return '<th class="num">'+esc(i.nom)+'</th>';}).join('')+'<th></th></tr>';
-
-    var cb=document.getElementById('com-body');
-    if(!d.communes.length) cb.innerHTML='<tr><td colspan="'+(6+imms.length)+'" class="empty">Aucune dépense commune.</td></tr>';
-    else{
-      cb.innerHTML='';
-      d.communes.forEach(function(c){
-        var pl=(c.partLocative===''||c.partLocative==null)?1:Number(c.partLocative);
-        var tr=document.createElement('tr');
-        var cols=imms.map(function(i){
-          var part=(c.cle==='egales')?(1/imms.length):(d.parts[i.id]||0);
-          return '<td class="num">'+fmt(Number(c.montant)*pl*part)+'</td>';
-        }).join('');
-        tr.innerHTML='<td>'+dfr(c.date)+'</td><td>'+esc(nomPoste(c.posteId))+'</td>'+
-          '<td>'+esc(c.description||'')+'</td><td class="num neg">'+fmt(c.montant)+'</td>'+
-          '<td class="num">'+(pl===1?'<span class="bdg bdg-ok">100 %</span>':
-            '<span class="bdg bdg-warn">'+Math.round(pl*100)+' %</span>')+'</td>'+cols+
-          '<td><button class="btn" style="padding:2px 6px;font-size:9px" onclick="supprimer(\''+esc(c.id)+'\',\'commune\')">✕</button></td>';
-        cb.appendChild(tr);
-      });
-    }
+    DEPDATA=await gsApi({action:'getDepenses',annee:ANNEE});
+    remplirFiltresDep();
+    rendreDepenses();
   }catch(e){ tb.innerHTML='<tr><td colspan="7" class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+}
+
+function remplirFiltresDep(){
+  var si=document.getElementById('f-dimm'), sm=document.getElementById('f-dmois'), sp=document.getElementById('f-dposte');
+  var vi=si.value, vm=sm.value, vp=sp.value;
+  si.innerHTML='<option value="">Tous</option>'+REF.immeubles.map(function(i){
+    return '<option value="'+esc(i.id)+'">'+esc(i.nom)+'</option>';}).join('');
+  var MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  sm.innerHTML='<option value="">Tous</option>'+MOIS.map(function(n,i){
+    var v=String(i+1).padStart(2,'0');
+    return '<option value="'+v+'">'+n+'</option>';}).join('');
+  /* Seuls les postes réellement utilisés dans l'année, pour un menu court. */
+  var vus={};
+  DEPDATA.depenses.concat(DEPDATA.communes).forEach(function(x){ vus[x.posteId]=1; });
+  sp.innerHTML='<option value="">Tous</option>'+Object.keys(vus).sort(function(a,b){
+    return nomPoste(a).localeCompare(nomPoste(b));}).map(function(id){
+    return '<option value="'+esc(id)+'">'+esc(nomPoste(id))+'</option>';}).join('');
+  si.value=vi; sm.value=vm; sp.value=vp;
+}
+
+function viderFiltresDep(){
+  ['f-dimm','f-dmois','f-dposte'].forEach(function(id){ document.getElementById(id).value=''; });
+  rendreDepenses();
+}
+
+function rendreDepenses(){
+  if(!DEPDATA) return;
+  var d=DEPDATA;
+  var fi=document.getElementById('f-dimm').value,
+      fm=document.getElementById('f-dmois').value,
+      fp=document.getElementById('f-dposte').value;
+  var parMois=function(x){ return !fm || String(x.date).slice(5,7)===fm; };
+  var parPoste=function(x){ return !fp || x.posteId===fp; };
+
+  var tb=document.getElementById('dep-body');
+  var ls=d.depenses.filter(function(x){ return !IMM || x.immeubleId===IMM; })
+    .filter(function(x){ return !fi || x.immeubleId===fi; })
+    .filter(parMois).filter(parPoste);
+  if(!ls.length) tb.innerHTML='<tr><td colspan="7" class="empty">Aucune dépense pour ce filtre.</td></tr>';
+  else{
+    tb.innerHTML='';
+    ls.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
+    ls.forEach(function(x){
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td>'+dfr(x.date)+'</td><td>'+esc(nomPoste(x.posteId))+'</td>'+
+        '<td>'+esc(nomImm(x.immeubleId))+'</td><td>'+esc(x.description||'')+'</td>'+
+        '<td><span class="tag">'+(x.nature==='capital'?'Capital':'Courante')+'</span></td>'+
+        '<td class="num neg">'+fmt(x.montant)+'</td>'+
+        '<td><button class="btn" style="padding:2px 6px;font-size:9px" onclick="supprimer(\''+esc(x.id)+'\',\'depense\')">✕</button></td>';
+      tb.appendChild(tr);
+    });
+    var tt=document.createElement('tr'); tt.className='tr-tot';
+    tt.innerHTML='<td colspan="5">Total</td><td class="num neg">'+
+      fmt(ls.reduce(function(a,x){return a+Number(x.montant);},0))+'</td><td></td>';
+    tb.appendChild(tt);
+  }
+
+  var imms=REF.immeubles;
+  document.getElementById('com-head').innerHTML='<tr><th>Date</th><th>Poste</th><th>Description</th>'+
+    '<th class="num">Montant</th><th class="num">Part loc.</th>'+
+    imms.map(function(i){return '<th class="num">'+esc(i.nom)+'</th>';}).join('')+'<th></th></tr>';
+
+  var cb=document.getElementById('com-body');
+  /* Le filtre d'immeuble ne s'applique pas aux communes : elles touchent
+     chaque immeuble par répartition. Mois et poste s'y appliquent. */
+  var lc=d.communes.filter(parMois).filter(parPoste);
+  if(!lc.length) cb.innerHTML='<tr><td colspan="'+(6+imms.length)+'" class="empty">Aucune dépense commune pour ce filtre.</td></tr>';
+  else{
+    cb.innerHTML='';
+    lc.forEach(function(c){
+      var pl=(c.partLocative===''||c.partLocative==null)?1:Number(c.partLocative);
+      var tr=document.createElement('tr');
+      var cols=imms.map(function(i){
+        var part=(c.cle==='egales')?(1/imms.length):(d.parts[i.id]||0);
+        return '<td class="num">'+fmt(Number(c.montant)*pl*part)+'</td>';
+      }).join('');
+      tr.innerHTML='<td>'+dfr(c.date)+'</td><td>'+esc(nomPoste(c.posteId))+'</td>'+
+        '<td>'+esc(c.description||'')+'</td><td class="num neg">'+fmt(c.montant)+'</td>'+
+        '<td class="num">'+(pl===1?'<span class="bdg bdg-ok">100 %</span>':
+          '<span class="bdg bdg-warn">'+Math.round(pl*100)+' %</span>')+'</td>'+cols+
+        '<td><button class="btn" style="padding:2px 6px;font-size:9px" onclick="supprimer(\''+esc(c.id)+'\',\'commune\')">✕</button></td>';
+      cb.appendChild(tr);
+    });
+  }
 }
 
 async function ajouterDepense(){
