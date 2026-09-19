@@ -383,15 +383,21 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
 <section id="tab-somm" class="hidden">
   <div class="sec">
     <span>Sommaire par poste — <span class="an-txt"></span></span>
-    <div class="sec-actions"><button class="btn" onclick="exporterSommaire()">Exporter CSV</button></div>
+    <div class="sec-actions">
+      <button class="btn" id="somm-vue" onclick="basculerVueSomm()">Vue par immeuble</button>
+      <button class="btn" onclick="exporterSommaire()">Exporter CSV</button>
+    </div>
   </div>
+  <div class="addcard" id="somm-imm-bar" style="display:none;gap:8px;flex-wrap:wrap;margin-bottom:12px"></div>
   <div class="tbl-wrap"><table>
     <thead id="somm-head"></thead>
     <tbody id="somm-body"><tr><td class="empty">Chargement…</td></tr></tbody>
   </table></div>
   <div class="note">
-    C'est la vue à comparer avec la feuille Dépenses du chiffrier, poste par poste et colonne
-    par colonne. Les montants incluent la part ventilée des dépenses communes.
+    <b>Vue par mois</b> : la disposition du fichier compta — un mois par colonne, les loyers
+    encaissés en tête, le net en pied. Un mois vide signale un relevé pas encore dépouillé.
+    <b>Vue par immeuble</b> : la comparaison au chiffrier d'origine, avec les lignes T776.
+    Les montants incluent la part locative ventilée des dépenses communes.
   </div>
 </section>
 
@@ -1176,51 +1182,183 @@ async function supprimer(id,type){
 }
 
 /* === SOMMAIRE PAR POSTE === */
+/* Deux vues. « Par mois » reproduit la disposition du fichier compta :
+   un mois par colonne, les loyers encaissés en tête, le net en pied, et des
+   boutons pour isoler un immeuble — un mois vide saute aux yeux et signale
+   un relevé manquant. « Par immeuble » demeure la vue de comparaison avec
+   le chiffrier d'origine (colonnes = immeubles, lignes T776). */
+var SOMM_VUE='mois', SOMM_IMM='';
+
 async function chargerSommaire(){
   var tb=document.getElementById('somm-body');
   try{
     SOMM=await gsApi({action:'sommairePostes',annee:ANNEE});
-    document.getElementById('somm-head').innerHTML='<tr><th>Poste</th><th style="width:70px">T776</th>'+
-      SOMM.immeubles.map(function(i){return '<th class="num">'+esc(i.nom)+'</th>';}).join('')+
-      '<th class="num">Total</th></tr>';
-    if(!SOMM.lignes.length){ tb.innerHTML='<tr><td class="empty">Aucune dépense.</td></tr>'; return; }
-    tb.innerHTML='';
-    var grpCourant='';
-    SOMM.lignes.forEach(function(l){
-      if(l.groupe!==grpCourant){
-        grpCourant=l.groupe;
-        var g=document.createElement('tr'); g.className='tr-grp';
-        g.innerHTML='<td colspan="'+(3+SOMM.immeubles.length)+'">'+esc(grpCourant||'Autres')+'</td>';
-        tb.appendChild(g);
-      }
-      var tr=document.createElement('tr');
-      tr.innerHTML='<td>'+esc(l.nom)+(l.deductible==='non'?' <span class="bdg bdg-warn">non déd.</span>':'')+'</td>'+
-        '<td class="sub">'+esc(l.ligneT776||'—')+'</td>'+
-        l.parImmeuble.map(function(v){return '<td class="num">'+(v?fmt(v):'—')+'</td>';}).join('')+
-        '<td class="num neg" style="font-weight:700">'+fmt(l.total)+'</td>';
-      tb.appendChild(tr);
-    });
-    var tt=document.createElement('tr'); tt.className='tr-tot';
-    tt.innerHTML='<td colspan="2">Total des dépenses '+ANNEE+'</td>'+
-      SOMM.totalParImmeuble.map(function(v){return '<td class="num">'+fmt(v)+'</td>';}).join('')+
-      '<td class="num">'+fmt(SOMM.total)+'</td>';
-    tb.appendChild(tt);
+    rendreSommaire();
   }catch(e){ tb.innerHTML='<tr><td class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+}
+
+function basculerVueSomm(){ SOMM_VUE=(SOMM_VUE==='mois')?'imm':'mois'; rendreSommaire(); }
+function filtrerSommImm(id){ SOMM_IMM=id; rendreSommaire(); }
+
+function rendreSommaire(){
+  if(!SOMM) return;
+  var btn=document.getElementById('somm-vue');
+  if(btn) btn.textContent=(SOMM_VUE==='mois')?'Vue par immeuble':'Vue par mois';
+  var bar=document.getElementById('somm-imm-bar');
+  if(bar){
+    if(SOMM_VUE==='mois'){
+      bar.style.display='flex';
+      bar.innerHTML=[{id:'',nom:'Tous les immeubles'}].concat(SOMM.immeubles).map(function(i){
+        return '<button class="btn'+(SOMM_IMM===i.id?' btn-p':'')+'" '+
+               'onclick="filtrerSommImm(\''+i.id+'\')">'+esc(i.nom)+'</button>';
+      }).join('');
+    } else { bar.style.display='none'; }
+  }
+  if(SOMM_VUE==='mois') rendreSommaireMois(); else rendreSommaireImm();
+}
+
+function sommArrondi(n){ return Math.round(n*100)/100; }
+function sommValMois(l){
+  if(!SOMM_IMM) return l.parMois||[];
+  return (l.parMoisImm&&l.parMoisImm[SOMM_IMM])||[0,0,0,0,0,0,0,0,0,0,0,0];
+}
+
+function rendreSommaireMois(){
+  var tb=document.getElementById('somm-body');
+  if(SOMM.lignes.length && !SOMM.lignes[0].parMois){
+    document.getElementById('somm-head').innerHTML='';
+    tb.innerHTML='<tr><td class="empty">La vue mensuelle exige la dernière version du Code.gs : '+
+      'recolle-le dans Apps Script, puis Déployer → Gérer les déploiements → Nouvelle version.</td></tr>';
+    return;
+  }
+  document.getElementById('somm-head').innerHTML='<tr><th class="sticky1">Poste</th>'+
+    MOIS_AB.map(function(m){return '<th class="num">'+m+'</th>';}).join('')+
+    '<th class="num">Total</th></tr>';
+  tb.innerHTML='';
+  var NC=14;
+
+  var rev=SOMM.revenus?(SOMM_IMM?(SOMM.revenus.parMoisImm||{})[SOMM_IMM]:SOMM.revenus.parMois):null;
+  if(rev){
+    var trv=document.createElement('tr');
+    var trev=sommArrondi(rev.reduce(function(a,b){return a+b;},0));
+    trv.innerHTML='<td class="sticky1" style="font-weight:600">Loyers encaissés</td>'+
+      rev.map(function(v){return '<td class="num pos">'+(v?fmt(v):'—')+'</td>';}).join('')+
+      '<td class="num pos" style="font-weight:700">'+fmt(trev)+'</td>';
+    tb.appendChild(trv);
+  }
+
+  var lignes=SOMM.lignes.map(function(l){
+    var vm=sommValMois(l);
+    return {l:l,vm:vm,tot:sommArrondi(vm.reduce(function(a,b){return a+b;},0))};
+  }).filter(function(x){ return !SOMM_IMM || x.tot; });
+
+  if(!lignes.length){
+    var tre=document.createElement('tr');
+    tre.innerHTML='<td class="empty" colspan="'+NC+'">Aucune dépense'+(SOMM_IMM?' pour cet immeuble':'')+'.</td>';
+    tb.appendChild(tre);
+  }
+
+  var grpCourant='';
+  lignes.forEach(function(x){
+    var l=x.l;
+    if(l.groupe!==grpCourant){
+      grpCourant=l.groupe;
+      var g=document.createElement('tr'); g.className='tr-grp';
+      g.innerHTML='<td class="sticky1">'+esc(grpCourant||'Autres')+'</td><td colspan="'+(NC-1)+'"></td>';
+      tb.appendChild(g);
+    }
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td class="sticky1">'+esc(l.nom)+(l.deductible==='non'?' <span class="bdg bdg-warn">non déd.</span>':'')+'</td>'+
+      x.vm.map(function(v){return '<td class="num">'+(v?fmt(v):'—')+'</td>';}).join('')+
+      '<td class="num neg" style="font-weight:700">'+fmt(x.tot)+'</td>';
+    tb.appendChild(tr);
+  });
+
+  var totMois=MOIS_AB.map(function(_,m){
+    return sommArrondi(lignes.reduce(function(a,x){return a+x.vm[m];},0));
+  });
+  var totAn=sommArrondi(totMois.reduce(function(a,b){return a+b;},0));
+  var tt=document.createElement('tr'); tt.className='tr-tot';
+  tt.innerHTML='<td class="sticky1">Total des dépenses</td>'+
+    totMois.map(function(v){return '<td class="num">'+(v?fmt(v):'—')+'</td>';}).join('')+
+    '<td class="num">'+fmt(totAn)+'</td>';
+  tb.appendChild(tt);
+
+  if(rev){
+    var netMois=MOIS_AB.map(function(_,m){ return sommArrondi((rev[m]||0)-totMois[m]); });
+    var netAn=sommArrondi(netMois.reduce(function(a,b){return a+b;},0));
+    var tn=document.createElement('tr'); tn.className='tr-tot';
+    tn.innerHTML='<td class="sticky1">Net (revenus − dépenses)</td>'+
+      netMois.map(function(v){return '<td class="num '+cls(v)+'">'+(v?fmt(v):'—')+'</td>';}).join('')+
+      '<td class="num '+cls(netAn)+'" style="font-weight:700">'+fmt(netAn)+'</td>';
+    tb.appendChild(tn);
+  }
+}
+
+function rendreSommaireImm(){
+  var tb=document.getElementById('somm-body');
+  document.getElementById('somm-head').innerHTML='<tr><th class="sticky1">Poste</th><th style="width:70px">T776</th>'+
+    SOMM.immeubles.map(function(i){return '<th class="num">'+esc(i.nom)+'</th>';}).join('')+
+    '<th class="num">Total</th></tr>';
+  if(!SOMM.lignes.length){ tb.innerHTML='<tr><td class="empty">Aucune dépense.</td></tr>'; return; }
+  tb.innerHTML='';
+  var grpCourant='';
+  SOMM.lignes.forEach(function(l){
+    if(l.groupe!==grpCourant){
+      grpCourant=l.groupe;
+      var g=document.createElement('tr'); g.className='tr-grp';
+      g.innerHTML='<td class="sticky1">'+esc(grpCourant||'Autres')+'</td><td colspan="'+(2+SOMM.immeubles.length)+'"></td>';
+      tb.appendChild(g);
+    }
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td class="sticky1">'+esc(l.nom)+(l.deductible==='non'?' <span class="bdg bdg-warn">non déd.</span>':'')+'</td>'+
+      '<td class="sub">'+esc(l.ligneT776||'—')+'</td>'+
+      l.parImmeuble.map(function(v){return '<td class="num">'+(v?fmt(v):'—')+'</td>';}).join('')+
+      '<td class="num neg" style="font-weight:700">'+fmt(l.total)+'</td>';
+    tb.appendChild(tr);
+  });
+  var tt=document.createElement('tr'); tt.className='tr-tot';
+  tt.innerHTML='<td class="sticky1" colspan="2">Total des dépenses '+ANNEE+'</td>'+
+    SOMM.totalParImmeuble.map(function(v){return '<td class="num">'+fmt(v)+'</td>';}).join('')+
+    '<td class="num">'+fmt(SOMM.total)+'</td>';
+  tb.appendChild(tt);
 }
 
 function exporterSommaire(){
   if(!SOMM) return;
-  var l=[['Poste','T776'].concat(SOMM.immeubles.map(function(i){return i.nom;})).concat(['Total'])];
-  SOMM.lignes.forEach(function(x){
-    l.push([x.nom,x.ligneT776||''].concat(x.parImmeuble.map(function(v){return String(v).replace('.',',');}))
-      .concat([String(x.total).replace('.',',')]));
-  });
-  l.push(['TOTAL',''].concat(SOMM.totalParImmeuble.map(function(v){return String(v).replace('.',',');}))
-    .concat([String(SOMM.total).replace('.',',')]));
+  var num=function(v){ return String(v).replace('.',','); };
+  var l=[], nomF;
+  if(SOMM_VUE==='mois' && (!SOMM.lignes.length || SOMM.lignes[0].parMois)){
+    l.push(['Poste'].concat(MOIS_AB).concat(['Total']));
+    var rev=SOMM.revenus?(SOMM_IMM?(SOMM.revenus.parMoisImm||{})[SOMM_IMM]:SOMM.revenus.parMois):null;
+    if(rev){
+      l.push(['Loyers encaissés'].concat(rev.map(num))
+        .concat([num(sommArrondi(rev.reduce(function(a,b){return a+b;},0)))]));
+    }
+    var totMois=[0,0,0,0,0,0,0,0,0,0,0,0];
+    SOMM.lignes.forEach(function(x){
+      var vm=sommValMois(x);
+      var t=sommArrondi(vm.reduce(function(a,b){return a+b;},0));
+      if(SOMM_IMM && !t) return;
+      vm.forEach(function(v,m){ totMois[m]+=v; });
+      l.push([x.nom].concat(vm.map(num)).concat([num(t)]));
+    });
+    totMois=totMois.map(sommArrondi);
+    l.push(['TOTAL DÉPENSES'].concat(totMois.map(num))
+      .concat([num(sommArrondi(totMois.reduce(function(a,b){return a+b;},0)))]));
+    nomF='sommaire-mensuel'+(SOMM_IMM?'-'+SOMM_IMM:'')+'-'+ANNEE+'.csv';
+  } else {
+    l.push(['Poste','T776'].concat(SOMM.immeubles.map(function(i){return i.nom;})).concat(['Total']));
+    SOMM.lignes.forEach(function(x){
+      l.push([x.nom,x.ligneT776||''].concat(x.parImmeuble.map(num)).concat([num(x.total)]));
+    });
+    l.push(['TOTAL',''].concat(SOMM.totalParImmeuble.map(num)).concat([num(SOMM.total)]));
+    nomF='depenses-par-poste-'+ANNEE+'.csv';
+  }
   var csv='\uFEFF'+l.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(';');}).join('\n');
   var a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  a.download='depenses-par-poste-'+ANNEE+'.csv'; a.click();
+  a.download=nomF; a.click();
 }
 
 /* === IMMEUBLES === */
