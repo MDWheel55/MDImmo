@@ -86,6 +86,9 @@ tbody tr:hover{background:#F9FBFA}
 .bdg-bad{background:var(--red-bg);color:var(--red)}
 .empty{padding:38px 20px;text-align:center;color:var(--muted);font-size:13px}
 .sub{color:var(--muted);font-size:11.5px;font-family:var(--syne)}
+.tr-pret td{color:var(--muted);font-size:12px;padding-top:3px;padding-bottom:3px}
+.tr-pret .sticky1{padding-left:26px;font-weight:400;font-style:italic}
+
 
 /* Cellules de perception */
 .cell{width:100%;font-family:var(--mono);font-size:11.5px;text-align:center;border:1px solid transparent;
@@ -146,6 +149,7 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
   padding:8px 10px;font-size:11px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.14);z-index:5;display:none;min-width:200px}
 .chart-tip b{font-family:var(--cond);font-size:12px;display:block;margin-bottom:4px}
 .chart-tip .tip-l{display:flex;justify-content:space-between;gap:14px}
+.chart-tip .tip-sub{color:var(--muted);padding-left:12px;font-size:11px}
 .chart-tip .tip-t{border-top:1px solid var(--border);margin-top:4px;padding-top:4px;font-weight:700}
 .chart h4{font-family:var(--cond);font-size:16px;font-weight:700;margin-bottom:12px}
 .chart svg{width:100%;height:auto;display:block;overflow:visible}
@@ -650,6 +654,31 @@ function esc(s){ return (s==null?'':String(s)).replace(/[<>&"]/g,function(c){ret
 function dfr(iso){ if(!iso) return ''; var p=String(iso).slice(0,10).split('-'); return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:iso; }
 function nomImm(id){ var i=REF.immeubles.filter(function(x){return x.id===id;})[0]; return i?i.nom:'Commun'; }
 function nomPoste(id){ var p=REF.postes.filter(function(x){return x.id===id;})[0]; return p?p.nom:id; }
+function poste(id){ return REF.postes.filter(function(x){return x.id===id;})[0]||null; }
+/* Hors T776 : poste marqué non déductible dans Postes (ex. portion placements du PR3).
+   Déductible ailleurs (ligne 22100 / annexe N) ou personnel — jamais contre les loyers. */
+function posteHorsT776(id){ var p=poste(id); return !!(p&&p.deductible==='non'); }
+function posteFinancement(id){ var p=poste(id); return !!(p&&p.groupe==='Financement'); }
+/* Cache getDepenses partagé (infobulle du graphique + sous-lignes du sommaire). */
+var DEP_CACHE={};
+function getDepensesAnnee(){
+  if(!DEP_CACHE[ANNEE]) DEP_CACHE[ANNEE]=gsApi({action:'getDepenses',annee:ANNEE});
+  return DEP_CACHE[ANNEE];
+}
+/* Étiquettes des prêts, repérés par leur no de compte dans la description.
+   « Fradet » = résidence portant les prêts mise à part 136785-PR1 et PR6. */
+var RX_PRET=/(\d{6}-(?:PR|MC)\d+)/;
+var NOMS_PRETS={
+  '136785-PR1':'PR1 · Fradet (mise à part)',
+  '136785-PR6':'PR6 · Fradet (mise à part)',
+  '080729-PR1':'PR1 · 6e Avenue',
+  '080729-PR2':'PR2 · Corsetière',
+  '080729-PR3':'PR3 · Corsetière',
+  '612729-PR5':'PR5 · 8e Avenue',
+  '612729-MC1':'MC1 · Marge immeubles'
+};
+function nomPret(tag){ return NOMS_PRETS[tag]||tag; }
+function tagPret(desc){ var m=String(desc||'').match(RX_PRET); return m?m[1]:''; }
 
 /* === DÉMARRAGE === */
 async function initApp(){
@@ -779,7 +808,7 @@ function dessinerGraphique(parMois){
     '<div class="chart-leg"><span><i style="background:var(--green)"></i>Loyers</span>'+
     '<span><i style="background:var(--red)"></i>Dépenses</span>'+
     (aCap?'<span><i style="background:var(--amber)"></i>Capital des prêts</span>':'')+
-    (aInd?'<span><i style="background:var(--red-bd)"></i>Intérêts non déduits</span>':'')+'</div>';
+    (aInd?'<span><i style="background:var(--red-bd)"></i>Intérêts hors T776</span>':'')+'</div>';
 }
 
 /* Détail des dépenses par mois pour l'infobulle du graphique : agrège
@@ -787,20 +816,32 @@ function dessinerGraphique(parMois){
 async function construireDetailMois(parMois){
   var detail=null;
   try{
-    var d=await gsApi({action:'getDepenses',annee:ANNEE});
+    var d=await getDepensesAnnee();
     detail=parMois.map(function(){ return {}; });
-    var ajouter=function(x,mt){
+    var detailEx=parMois.map(function(){ return {}; });
+    var ajouter=function(x,brut,pl){
       if(String(x.posteId)==='cap_hypo') return;   // capital affiché à part
       var i=Number(String(x.date).slice(5,7))-1;
-      if(i<0||i>=detail.length||!mt) return;
+      if(i<0||i>=detail.length||!brut) return;
       var n=nomPoste(x.posteId);
+      // Poste hors T776 (ex. portion placements) : jamais dans la liste des
+      // dépenses — il n'est pas compté dans « Total dépenses ».
+      if(posteHorsT776(x.posteId)){ detailEx[i][n]=(detailEx[i][n]||0)+brut; return; }
+      var mt=brut*(pl==null?1:pl);
       detail[i][n]=(detail[i][n]||0)+mt;
+      // Part < 100 % d'un poste de financement : la tranche exclue (ex. 32,2 %
+      // du PR1 mise à part) est une sortie réelle, suivie hors T776.
+      if(pl!=null&&pl<1&&posteFinancement(x.posteId)){
+        var nx='Part personnelle · '+n;
+        detailEx[i][nx]=(detailEx[i][nx]||0)+brut*(1-pl);
+      }
     };
-    d.depenses.forEach(function(x){ ajouter(x,Number(x.montant)); });
+    d.depenses.forEach(function(x){ ajouter(x,Number(x.montant),null); });
     d.communes.forEach(function(c){
       var pl=(c.partLocative===''||c.partLocative==null)?1:Number(c.partLocative);
-      ajouter(c,Number(c.montant)*pl);
+      ajouter(c,Number(c.montant),pl);
     });
+
   }catch(e){ /* sans détail, l'infobulle affichera le total seulement */ }
 
   var tip=document.getElementById('chart-tip');
@@ -823,10 +864,18 @@ async function construireDetailMois(parMois){
       if(lignes.length>8) corps+='<div class="tip-l"><span>… et '+(lignes.length-8)+' autres postes</span><span></span></div>';
     }
     var cap=m.capital||0, ind=m.intExclu||0;
+    var corpsEx='';
+    if(ind>0&&detailEx&&detailEx[i]){
+      corpsEx=Object.keys(detailEx[i]).map(function(n){ return [n,detailEx[i][n]]; })
+        .sort(function(a,b){ return b[1]-a[1]; })
+        .map(function(l){
+          return '<div class="tip-l tip-sub"><span>'+esc(l[0])+'</span><span>'+fmt(l[1])+' $</span></div>';
+        }).join('');
+    }
     tip.innerHTML='<b>'+esc(m.mois)+'</b>'+corps+
       '<div class="tip-l tip-t"><span>Total dépenses</span><span>'+fmt(m.depenses)+' $</span></div>'+
       (cap>0?'<div class="tip-l"><span>Capital des prêts</span><span>'+fmt(cap)+' $</span></div>':'')+
-      (ind>0?'<div class="tip-l"><span>Intérêts non déduits</span><span>'+fmt(ind)+' $</span></div>':'')+
+      (ind>0?'<div class="tip-l"><span>Intérêts hors T776</span><span>'+fmt(ind)+' $</span></div>'+corpsEx:'')+
       (cap+ind>0?'<div class="tip-l tip-t"><span>Sorties de caisse</span><span>'+fmt(m.depenses+cap+ind)+' $</span></div>':'');
     var box=document.getElementById('db-chart').getBoundingClientRect();
     tip.style.display='block';
@@ -846,7 +895,7 @@ async function chargerDash(){
       blk('Loyers encaissés',fmt(d.revenus)+' $','Base de caisse')+
       blk('Dépenses courantes',fmt(d.depenses)+' $','Déductibles dans l\'année')+
       blk('Net avant amortissement',fmt(d.net)+' $','Revenus moins dépenses',true)+
-      blk('Liquidité (cash flow)',fmt(liq)+' $','Après capital '+fmt(capP)+' $ et int. non déduits '+fmt(indT)+' $',true)+
+      blk('Liquidité (cash flow)',fmt(liq)+' $','Après capital '+fmt(capP)+' $ et int. hors T776 '+fmt(indT)+' $',true)+
       blk('Loyers dus',fmt(d.montantDu)+' $','Cumul à ce jour')+
       blk('Additions au capital',fmt(d.capital)+' $','À amortir (DPA)');
     document.getElementById('db-chart').innerHTML=dessinerGraphique(d.parMois);
@@ -1179,7 +1228,7 @@ async function ajouterDepense(){
       description:document.getElementById('d-desc').value,
       fournisseur:document.getElementById('d-four').value});
     ['d-montant','d-desc','d-four'].forEach(function(id){ document.getElementById(id).value=''; });
-    chargé.db=0; chargé.sm=0; chargé.rp=0;
+    chargé.db=0; chargé.sm=0; chargé.rp=0; DEP_CACHE={};
     await chargerDepenses();
   }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
@@ -1194,7 +1243,7 @@ async function ajouterCommune(){
       cle:document.getElementById('c-cle').value,
       description:document.getElementById('c-desc').value});
     ['c-montant','c-desc'].forEach(function(id){ document.getElementById(id).value=''; });
-    chargé.db=0; chargé.sm=0; chargé.rp=0;
+    chargé.db=0; chargé.sm=0; chargé.rp=0; DEP_CACHE={};
     await chargerDepenses();
   }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
@@ -1203,7 +1252,7 @@ async function supprimer(id,type){
   if(!confirm('Supprimer cette ligne ?')) return;
   try{
     await gsApi({action:'supprimerDepense',id:id,type:type});
-    chargé.db=0; chargé.sm=0; chargé.rp=0;
+    chargé.db=0; chargé.sm=0; chargé.rp=0; DEP_CACHE={};
     await chargerDepenses();
   }catch(e){ alert('⚠ NON enregistré — la feuille n\'a PAS été modifiée : '+e.message); }
 }
@@ -1220,8 +1269,64 @@ async function chargerSommaire(){
   var tb=document.getElementById('somm-body');
   try{
     SOMM=await gsApi({action:'sommairePostes',annee:ANNEE});
+    try{ SOMM_DET=construireSommDet(await getDepensesAnnee()); }
+    catch(e){ SOMM_DET=null; /* sans détail : pas de sous-lignes ni de section hors T776 */ }
     rendreSommaire();
   }catch(e){ tb.innerHTML='<tr><td class="empty">Erreur : '+esc(e.message)+'</td></tr>'; }
+}
+
+/* Détail mensuel par prêt, reconstruit du journal (getDepenses) :
+   - prets      : sous-lignes des postes déductibles, par no de prêt (montants × part);
+   - hors       : postes marqués non déductibles (ex. portion placements PR3) — bruts;
+   - partPerso  : tranche exclue des postes de financement à part < 100 %
+                  (ex. 32,2 % du PR1 mise à part);
+   - cap        : capital des prêts (cap_hypo), avec ventilation par prêt.
+   Tout ce qui est « hors » ou « cap » reste EXCLU du total des dépenses. */
+var SOMM_DET=null;
+function construireSommDet(d){
+  var z=function(){ return [0,0,0,0,0,0,0,0,0,0,0,0]; };
+  var det={prets:{},hors:{},horsPrets:{},partPerso:z(),cap:z(),capPrets:{}};
+  var addTag=function(map,tag,i,v){ if(!map[tag]) map[tag]=z(); map[tag][i]+=v; };
+  var traiter=function(x,brut,pl){
+    var i=Number(String(x.date).slice(5,7))-1;
+    if(i<0||i>11||!brut) return;
+    var id=String(x.posteId), tag=tagPret(x.description);
+    if(id==='cap_hypo'){
+      det.cap[i]+=brut;
+      if(tag) addTag(det.capPrets,tag,i,brut);
+      return;
+    }
+    if(posteHorsT776(id)){
+      det.hors[id]=det.hors[id]||z(); det.hors[id][i]+=brut;
+      if(tag){ det.horsPrets[id]=det.horsPrets[id]||{}; addTag(det.horsPrets[id],tag,i,brut); }
+      return;
+    }
+    if(tag&&posteFinancement(id)){
+      det.prets[id]=det.prets[id]||{};
+      addTag(det.prets[id],tag,i,brut*(pl==null?1:pl));
+    }
+    if(pl!=null&&pl<1&&posteFinancement(id)) det.partPerso[i]+=brut*(1-pl);
+  };
+  d.depenses.forEach(function(x){ traiter(x,Number(x.montant),null); });
+  d.communes.forEach(function(c){
+    var pl=(c.partLocative===''||c.partLocative==null)?1:Number(c.partLocative);
+    traiter(c,Number(c.montant),pl);
+  });
+  return det;
+}
+function posteIdDeLigne(l){
+  if(l.id) return l.id;
+  var p=REF.postes.filter(function(x){return x.nom===l.nom;})[0];
+  return p?p.id:'';
+}
+function trPret(nom,vm){
+  var t=sommArrondi(vm.reduce(function(a,b){return a+b;},0));
+  if(!t) return null;
+  var tr=document.createElement('tr'); tr.className='tr-pret';
+  tr.innerHTML='<td class="sticky1">'+esc(nom)+'</td>'+
+    vm.map(function(v){return '<td class="num">'+(v?fmt(v):'—')+'</td>';}).join('')+
+    '<td class="num">'+fmt(t)+'</td>';
+  return tr;
 }
 
 function basculerVueSomm(){ SOMM_VUE=(SOMM_VUE==='mois')?'imm':'mois'; rendreSommaire(); }
@@ -1301,6 +1406,15 @@ function rendreSommaireMois(){
       x.vm.map(function(v){return '<td class="num">'+(v?fmt(v):'—')+'</td>';}).join('')+
       '<td class="num neg" style="font-weight:700">'+(x.tot?fmt(x.tot):'—')+'</td>';
     tb.appendChild(tr);
+    // Sous-lignes par prêt (vue « Tous les immeubles » seulement : les parts
+    // par immeuble des communes ne sont pas ventilées ici). Informationnelles —
+    // jamais ajoutées aux totaux.
+    if(!SOMM_IMM&&SOMM_DET){
+      var pid=posteIdDeLigne(l), parPret=SOMM_DET.prets[pid];
+      if(parPret) Object.keys(parPret).sort().forEach(function(tag){
+        var trp=trPret(nomPret(tag),parPret[tag]); if(trp) tb.appendChild(trp);
+      });
+    }
   });
 
   var totMois=MOIS_AB.map(function(_,m){
@@ -1321,6 +1435,52 @@ function rendreSommaireMois(){
       netMois.map(function(v){return '<td class="num '+cls(v)+'">'+(v?fmt(v):'—')+'</td>';}).join('')+
       '<td class="num '+cls(netAn)+'" style="font-weight:700">'+fmt(netAn)+'</td>';
     tb.appendChild(tn);
+  }
+
+  /* Section HORS T776 — trésorerie. Capital des prêts, intérêts déductibles
+     ailleurs (portion placements → ligne 22100 / annexe N) et part personnelle
+     des prêts mise à part. Compilé pour le comptable, mais étanche du locatif :
+     rien ici n'entre dans « Total des dépenses » ni au T776. */
+  if(!SOMM_IMM&&SOMM_DET){
+    var z12=[0,0,0,0,0,0,0,0,0,0,0,0];
+    var somme=function(vm){ return sommArrondi(vm.reduce(function(a,b){return a+b;},0)); };
+    var horsMois=z12.slice();
+    var ajRow=function(nom,vm,badge){
+      var t=somme(vm); if(!t) return;
+      vm.forEach(function(v,m){ horsMois[m]+=v; });
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td class="sticky1">'+esc(nom)+(badge?' <span class="bdg bdg-warn">'+esc(badge)+'</span>':'')+'</td>'+
+        vm.map(function(v){return '<td class="num">'+(v?fmt(v):'—')+'</td>';}).join('')+
+        '<td class="num" style="font-weight:700">'+fmt(t)+'</td>';
+      tb.appendChild(tr);
+      return tr;
+    };
+    var aQqch=somme(SOMM_DET.cap)||somme(SOMM_DET.partPerso)||
+      Object.keys(SOMM_DET.hors).some(function(id){ return somme(SOMM_DET.hors[id]); });
+    if(aQqch){
+      var g=document.createElement('tr'); g.className='tr-grp';
+      g.innerHTML='<td class="sticky1">Hors T776 — trésorerie</td><td colspan="'+(NC-1)+'"></td>';
+      tb.appendChild(g);
+      if(ajRow('Capital des prêts',SOMM_DET.cap)){
+        Object.keys(SOMM_DET.capPrets).sort().forEach(function(tag){
+          var trp=trPret(nomPret(tag),SOMM_DET.capPrets[tag]); if(trp) tb.appendChild(trp);
+        });
+      }
+      Object.keys(SOMM_DET.hors).sort().forEach(function(id){
+        if(ajRow(nomPoste(id),SOMM_DET.hors[id],'ligne 22100')&&SOMM_DET.horsPrets[id]){
+          Object.keys(SOMM_DET.horsPrets[id]).sort().forEach(function(tag){
+            var trp=trPret(nomPret(tag),SOMM_DET.horsPrets[id][tag]); if(trp) tb.appendChild(trp);
+          });
+        }
+      });
+      ajRow('Part personnelle des prêts (part < 100 %)',SOMM_DET.partPerso,'perso');
+      var th=document.createElement('tr'); th.className='tr-tot';
+      horsMois=horsMois.map(sommArrondi);
+      th.innerHTML='<td class="sticky1">Total sorties hors T776</td>'+
+        horsMois.map(function(v){return '<td class="num">'+(v?fmt(v):'—')+'</td>';}).join('')+
+        '<td class="num">'+fmt(somme(horsMois))+'</td>';
+      tb.appendChild(th);
+    }
   }
 }
 
@@ -2025,7 +2185,7 @@ async function importerJournal(forcer){
     }
     res.innerHTML=h;
     if(!r.doublons||!r.doublons.length) document.getElementById('imp-txt').value='';
-    chargé.dp=0; chargé.db=0; chargé.sm=0; chargé.rp=0;
+    chargé.dp=0; chargé.db=0; chargé.sm=0; chargé.rp=0; DEP_CACHE={};
   }catch(e){ res.innerHTML='<div class="note rouge">Erreur : '+esc(e.message)+'</div>'; }
 }
 
