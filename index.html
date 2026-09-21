@@ -156,7 +156,8 @@ textarea.inp{resize:vertical;min-height:80px;font-family:var(--mono);font-size:1
 .chart .bar-r{fill:var(--green)}
 .chart .bar-d{fill:var(--red)}
 .chart .bar-c{fill:var(--amber)}
-.chart .bar-r:hover,.chart .bar-d:hover,.chart .bar-c:hover{opacity:.75}
+.chart .bar-n{fill:var(--red-bd)}
+.chart .bar-r:hover,.chart .bar-d:hover,.chart .bar-c:hover,.chart .bar-n:hover{opacity:.75}
 .chart-leg{display:flex;gap:18px;justify-content:center;margin-top:10px;font-size:12px;color:var(--muted)}
 .lien-doc{font-size:11.5px;color:var(--green);text-decoration:none;border-bottom:1px solid var(--green-bd)}
 .lien-doc:hover{border-bottom-color:var(--green)}
@@ -736,10 +737,11 @@ function blk(t,v,s,fort){
 function dessinerGraphique(parMois){
   var L=760,H=260,mg={h:34,b:34,g:56,d:8};
   var iL=L-mg.g-mg.d, iH=H-mg.h-mg.b;
-  var max=0, aCap=false;
+  var max=0, aCap=false, aInd=false;
   parMois.forEach(function(m){
     if(m.capital>0) aCap=true;
-    max=Math.max(max,m.revenus,m.depenses+(m.capital||0));
+    if(m.intExclu>0) aInd=true;
+    max=Math.max(max,m.revenus,m.depenses+(m.capital||0)+(m.intExclu||0));
   });
   if(max<=0) max=1;
   // Échelle arrondie au palier lisible supérieur
@@ -765,6 +767,9 @@ function dessinerGraphique(parMois){
     // Capital des prêts : segment ambré empilé sur la barre des dépenses —
     // la hauteur totale devient la sortie de caisse du mois.
     if(cap>0) g+='<rect class="bar-c" data-mois="'+i+'" x="'+(cx+1)+'" y="'+y(m.depenses+cap)+'" width="'+bw+'" height="'+hc+'" rx="2"></rect>';
+    // Intérêts non déduits : troisième segment, au sommet de la pile.
+    var ind=m.intExclu||0, hn=(ind/haut)*iH;
+    if(ind>0) g+='<rect class="bar-n" data-mois="'+i+'" x="'+(cx+1)+'" y="'+y(m.depenses+cap+ind)+'" width="'+bw+'" height="'+hn+'" rx="2"></rect>';
     g+='<text class="lbl-x" x="'+cx+'" y="'+(H-mg.b+18)+'">'+esc(m.mois.slice(0,4))+'</text>';
   });
 
@@ -773,7 +778,8 @@ function dessinerGraphique(parMois){
     '<div class="chart-tip" id="chart-tip"></div>'+
     '<div class="chart-leg"><span><i style="background:var(--green)"></i>Loyers</span>'+
     '<span><i style="background:var(--red)"></i>Dépenses</span>'+
-    (aCap?'<span><i style="background:var(--amber)"></i>Capital des prêts</span>':'')+'</div>';
+    (aCap?'<span><i style="background:var(--amber)"></i>Capital des prêts</span>':'')+
+    (aInd?'<span><i style="background:var(--red-bd)"></i>Intérêts non déduits</span>':'')+'</div>';
 }
 
 /* Détail des dépenses par mois pour l'infobulle du graphique : agrège
@@ -802,7 +808,7 @@ async function construireDetailMois(parMois){
   if(!tip||!svg) return;
   svg.addEventListener('mousemove',function(ev){
     var r=ev.target;
-    var estBarre=r.classList&&(r.classList.contains('bar-d')||r.classList.contains('bar-c'));
+    var estBarre=r.classList&&(r.classList.contains('bar-d')||r.classList.contains('bar-c')||r.classList.contains('bar-n'));
     if(!estBarre){ tip.style.display='none'; return; }
     var i=Number(r.getAttribute('data-mois'));
     var m=parMois[i]; if(!m){ tip.style.display='none'; return; }
@@ -816,11 +822,12 @@ async function construireDetailMois(parMois){
       }).join('');
       if(lignes.length>8) corps+='<div class="tip-l"><span>… et '+(lignes.length-8)+' autres postes</span><span></span></div>';
     }
-    var cap=m.capital||0;
+    var cap=m.capital||0, ind=m.intExclu||0;
     tip.innerHTML='<b>'+esc(m.mois)+'</b>'+corps+
       '<div class="tip-l tip-t"><span>Total dépenses</span><span>'+fmt(m.depenses)+' $</span></div>'+
-      (cap>0?'<div class="tip-l"><span>Capital des prêts</span><span>'+fmt(cap)+' $</span></div>'+
-             '<div class="tip-l tip-t"><span>Sorties de caisse</span><span>'+fmt(m.depenses+cap)+' $</span></div>':'');
+      (cap>0?'<div class="tip-l"><span>Capital des prêts</span><span>'+fmt(cap)+' $</span></div>':'')+
+      (ind>0?'<div class="tip-l"><span>Intérêts non déduits</span><span>'+fmt(ind)+' $</span></div>':'')+
+      (cap+ind>0?'<div class="tip-l tip-t"><span>Sorties de caisse</span><span>'+fmt(m.depenses+cap+ind)+' $</span></div>':'');
     var box=document.getElementById('db-chart').getBoundingClientRect();
     tip.style.display='block';
     var tx=ev.clientX-box.left+14, ty=ev.clientY-box.top-10;
@@ -833,13 +840,13 @@ async function construireDetailMois(parMois){
 async function chargerDash(){
   try{
     var d=await gsApi({action:'tableauBord',annee:ANNEE});
-    var capP=d.capitalPret||0;
-    var liq=(d.liquidite!==undefined)?d.liquidite:(d.net-capP);
+    var capP=d.capitalPret||0, indT=d.interetsNonDeduits||0;
+    var liq=(d.liquidite!==undefined)?d.liquidite:(d.net-capP-indT);
     document.getElementById('db-blocs').innerHTML=
       blk('Loyers encaissés',fmt(d.revenus)+' $','Base de caisse')+
       blk('Dépenses courantes',fmt(d.depenses)+' $','Déductibles dans l\'année')+
       blk('Net avant amortissement',fmt(d.net)+' $','Revenus moins dépenses',true)+
-      blk('Liquidité (cash flow)',fmt(liq)+' $','Après '+fmt(capP)+' $ de capital sur prêts',true)+
+      blk('Liquidité (cash flow)',fmt(liq)+' $','Après capital '+fmt(capP)+' $ et int. non déduits '+fmt(indT)+' $',true)+
       blk('Loyers dus',fmt(d.montantDu)+' $','Cumul à ce jour')+
       blk('Additions au capital',fmt(d.capital)+' $','À amortir (DPA)');
     document.getElementById('db-chart').innerHTML=dessinerGraphique(d.parMois);
